@@ -1,9 +1,5 @@
 module manta::cap {
-    use sui::object::{Self, UID, ID};
-    use sui::tx_context::{Self, TxContext};
-    use sui::transfer;
-    use sui::clock::{Self, Clock};
-    
+    use sui::clock::Clock;
     use manta::memory::{Self, MemoryObject};
 
     // ============ Permission Constants ============
@@ -22,7 +18,7 @@ module manta::cap {
     // ============ Structs ============
 
     /// Capability token granting access to a MemoryObject
-    struct MemoryCap has key, store {
+    public struct MemoryCap has key, store {
         id: UID,
         memory_id: ID,
         permissions: u8,
@@ -47,12 +43,12 @@ module manta::cap {
             memory_id: memory::get_id(memory),
             permissions,
             expiry,
-            created_at: clock::timestamp_ms(clock),
+            created_at: clock.timestamp_ms(),
         }
     }
 
     /// Entry function: delegate read access
-    public entry fun delegate_read(
+    entry fun delegate_read(
         memory: &MemoryObject,
         recipient: address,
         expiry_ms: Option<u64>,
@@ -64,7 +60,7 @@ module manta::cap {
     }
 
     /// Entry function: delegate append access (includes read)
-    public entry fun delegate_append(
+    entry fun delegate_append(
         memory: &MemoryObject,
         recipient: address,
         expiry_ms: Option<u64>,
@@ -76,7 +72,7 @@ module manta::cap {
     }
 
     /// Entry function: delegate update access (includes read)
-    public entry fun delegate_update(
+    entry fun delegate_update(
         memory: &MemoryObject,
         recipient: address,
         expiry_ms: Option<u64>,
@@ -88,7 +84,7 @@ module manta::cap {
     }
 
     /// Entry function: delegate full access
-    public entry fun delegate_full(
+    entry fun delegate_full(
         memory: &MemoryObject,
         recipient: address,
         expiry_ms: Option<u64>,
@@ -104,11 +100,11 @@ module manta::cap {
     /// Revoke access by destroying the capability
     public fun revoke_access(cap: MemoryCap) {
         let MemoryCap { id, memory_id: _, permissions: _, expiry: _, created_at: _ } = cap;
-        object::delete(id);
+        id.delete();
     }
 
     /// Entry function: revoke access
-    public entry fun revoke(cap: MemoryCap) {
+    entry fun revoke(cap: MemoryCap) {
         revoke_access(cap);
     }
 
@@ -127,9 +123,9 @@ module manta::cap {
         };
         
         // Check expiry
-        if (option::is_some(&cap.expiry)) {
-            let exp = *option::borrow(&cap.expiry);
-            if (clock::timestamp_ms(clock) > exp) {
+        if (cap.expiry.is_some()) {
+            let exp = *cap.expiry.borrow();
+            if (clock.timestamp_ms() > exp) {
                 return false
             };
         };
@@ -147,9 +143,9 @@ module manta::cap {
     ) {
         assert!(cap.memory_id == memory::get_id(memory), EMemoryIdMismatch);
         
-        if (option::is_some(&cap.expiry)) {
-            let exp = *option::borrow(&cap.expiry);
-            assert!(clock::timestamp_ms(clock) <= exp, ECapabilityExpired);
+        if (cap.expiry.is_some()) {
+            let exp = *cap.expiry.borrow();
+            assert!(clock.timestamp_ms() <= exp, ECapabilityExpired);
         };
         
         assert!((cap.permissions & required_permission) == required_permission, EPermissionDenied);
@@ -183,7 +179,7 @@ module manta::cap {
     }
 
     /// Entry function: append using capability
-    public entry fun cap_append(
+    entry fun cap_append(
         memory: &mut MemoryObject,
         cap: &MemoryCap,
         payload: vector<u8>,
@@ -194,7 +190,7 @@ module manta::cap {
     }
 
     /// Entry function: update using capability
-    public entry fun cap_update(
+    entry fun cap_update(
         memory: &mut MemoryObject,
         cap: &MemoryCap,
         key: vector<u8>,

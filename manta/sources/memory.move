@@ -1,8 +1,6 @@
+#[allow(lint(share_owned))]
 module manta::memory {
-    use sui::object::{Self, UID, ID};
-    use sui::tx_context::{Self, TxContext};
-    use sui::transfer;
-    use sui::clock::{Self, Clock};
+    use sui::clock::Clock;
     use sui::bcs;
 
     // ============ Constants ============
@@ -12,14 +10,12 @@ module manta::memory {
 
     // ============ Errors ============
     
-    const EInvalidSchema: u64 = 0;
     const ESchemaTypeMismatch: u64 = 1;
-    const EKeyNotFound: u64 = 2;
 
     // ============ Structs ============
 
     /// Core memory object - the fundamental Manta primitive
-    struct MemoryObject has key, store {
+    public struct MemoryObject has key, store {
         id: UID,
         schema_type: u8,
         data: vector<u8>,
@@ -28,14 +24,14 @@ module manta::memory {
     }
 
     /// Single entry in episodic memory (append-only log)
-    struct EpisodicEntry has store, copy, drop {
+    public struct EpisodicEntry has store, copy, drop {
         timestamp: u64,
         actor: address,
         payload: vector<u8>,
     }
 
     /// Single entry in semantic memory (key-value store)
-    struct SemanticEntry has store, copy, drop {
+    public struct SemanticEntry has store, copy, drop {
         key: vector<u8>,
         value: vector<u8>,
         updated_at: u64,
@@ -53,7 +49,7 @@ module manta::memory {
             schema_type: SCHEMA_EPISODIC,
             data: vector::empty(),
             version: 0,
-            created_at: clock::timestamp_ms(clock),
+            created_at: clock.timestamp_ms(),
         }
     }
 
@@ -67,30 +63,30 @@ module manta::memory {
             schema_type: SCHEMA_SEMANTIC,
             data: vector::empty(),
             version: 0,
-            created_at: clock::timestamp_ms(clock),
+            created_at: clock.timestamp_ms(),
         }
     }
 
     /// Entry function: create episodic memory and transfer to sender
-    public entry fun create_episodic(
+    entry fun create_episodic(
         clock: &Clock,
         ctx: &mut TxContext
     ) {
         let memory = create_episodic_memory(clock, ctx);
-        transfer::transfer(memory, tx_context::sender(ctx));
+        transfer::transfer(memory, ctx.sender());
     }
 
     /// Entry function: create semantic memory and transfer to sender
-    public entry fun create_semantic(
+    entry fun create_semantic(
         clock: &Clock,
         ctx: &mut TxContext
     ) {
         let memory = create_semantic_memory(clock, ctx);
-        transfer::transfer(memory, tx_context::sender(ctx));
+        transfer::transfer(memory, ctx.sender());
     }
 
     /// Entry function: create shared episodic memory
-    public entry fun create_shared_episodic(
+    entry fun create_shared_episodic(
         clock: &Clock,
         ctx: &mut TxContext
     ) {
@@ -99,7 +95,7 @@ module manta::memory {
     }
 
     /// Entry function: create shared semantic memory
-    public entry fun create_shared_semantic(
+    entry fun create_shared_semantic(
         clock: &Clock,
         ctx: &mut TxContext
     ) {
@@ -119,25 +115,25 @@ module manta::memory {
         assert!(memory.schema_type == SCHEMA_EPISODIC, ESchemaTypeMismatch);
         
         let entry = EpisodicEntry {
-            timestamp: clock::timestamp_ms(clock),
-            actor: tx_context::sender(ctx),
+            timestamp: clock.timestamp_ms(),
+            actor: ctx.sender(),
             payload,
         };
         
         // Serialize and append entry
         let entry_bytes = bcs::to_bytes(&entry);
-        let entry_len = vector::length(&entry_bytes);
+        let entry_len = entry_bytes.length();
         
         // Prepend length as u32 for parsing
         let len_bytes = bcs::to_bytes(&(entry_len as u32));
-        vector::append(&mut memory.data, len_bytes);
-        vector::append(&mut memory.data, entry_bytes);
+        memory.data.append(len_bytes);
+        memory.data.append(entry_bytes);
         
         memory.version = memory.version + 1;
     }
 
     /// Entry function: append to episodic memory
-    public entry fun append(
+    entry fun append(
         memory: &mut MemoryObject,
         payload: vector<u8>,
         clock: &Clock,
@@ -161,23 +157,23 @@ module manta::memory {
         let entry = SemanticEntry {
             key,
             value,
-            updated_at: clock::timestamp_ms(clock),
+            updated_at: clock.timestamp_ms(),
         };
         
         // For V1: simple append-based storage
         // Each update appends; latest value for key wins on read
         let entry_bytes = bcs::to_bytes(&entry);
-        let entry_len = vector::length(&entry_bytes);
+        let entry_len = entry_bytes.length();
         
         let len_bytes = bcs::to_bytes(&(entry_len as u32));
-        vector::append(&mut memory.data, len_bytes);
-        vector::append(&mut memory.data, entry_bytes);
+        memory.data.append(len_bytes);
+        memory.data.append(entry_bytes);
         
         memory.version = memory.version + 1;
     }
 
     /// Entry function: update semantic memory
-    public entry fun update(
+    entry fun update(
         memory: &mut MemoryObject,
         key: vector<u8>,
         value: vector<u8>,
@@ -196,7 +192,7 @@ module manta::memory {
 
     /// Get memory metadata
     public fun get_id(memory: &MemoryObject): ID {
-        object::uid_to_inner(&memory.id)
+        memory.id.to_inner()
     }
 
     public fun get_schema_type(memory: &MemoryObject): u8 {
@@ -226,7 +222,7 @@ module manta::memory {
     /// Destroy a memory object (only owner can call)
     public fun destroy(memory: MemoryObject) {
         let MemoryObject { id, schema_type: _, data: _, version: _, created_at: _ } = memory;
-        object::delete(id);
+        id.delete();
     }
 
     // ============ Test Helpers ============
