@@ -1,0 +1,239 @@
+module manta::memory {
+    use sui::object::{Self, UID, ID};
+    use sui::tx_context::{Self, TxContext};
+    use sui::transfer;
+    use sui::clock::{Self, Clock};
+    use sui::bcs;
+
+    // ============ Constants ============
+    
+    const SCHEMA_EPISODIC: u8 = 0;
+    const SCHEMA_SEMANTIC: u8 = 1;
+
+    // ============ Errors ============
+    
+    const EInvalidSchema: u64 = 0;
+    const ESchemaTypeMismatch: u64 = 1;
+    const EKeyNotFound: u64 = 2;
+
+    // ============ Structs ============
+
+    /// Core memory object - the fundamental Manta primitive
+    struct MemoryObject has key, store {
+        id: UID,
+        schema_type: u8,
+        data: vector<u8>,
+        version: u64,
+        created_at: u64,
+    }
+
+    /// Single entry in episodic memory (append-only log)
+    struct EpisodicEntry has store, copy, drop {
+        timestamp: u64,
+        actor: address,
+        payload: vector<u8>,
+    }
+
+    /// Single entry in semantic memory (key-value store)
+    struct SemanticEntry has store, copy, drop {
+        key: vector<u8>,
+        value: vector<u8>,
+        updated_at: u64,
+    }
+
+    // ============ Create Functions ============
+
+    /// Create a new private (owned) episodic memory
+    public fun create_episodic_memory(
+        clock: &Clock,
+        ctx: &mut TxContext
+    ): MemoryObject {
+        MemoryObject {
+            id: object::new(ctx),
+            schema_type: SCHEMA_EPISODIC,
+            data: vector::empty(),
+            version: 0,
+            created_at: clock::timestamp_ms(clock),
+        }
+    }
+
+    /// Create a new private (owned) semantic memory
+    public fun create_semantic_memory(
+        clock: &Clock,
+        ctx: &mut TxContext
+    ): MemoryObject {
+        MemoryObject {
+            id: object::new(ctx),
+            schema_type: SCHEMA_SEMANTIC,
+            data: vector::empty(),
+            version: 0,
+            created_at: clock::timestamp_ms(clock),
+        }
+    }
+
+    /// Entry function: create episodic memory and transfer to sender
+    public entry fun create_episodic(
+        clock: &Clock,
+        ctx: &mut TxContext
+    ) {
+        let memory = create_episodic_memory(clock, ctx);
+        transfer::transfer(memory, tx_context::sender(ctx));
+    }
+
+    /// Entry function: create semantic memory and transfer to sender
+    public entry fun create_semantic(
+        clock: &Clock,
+        ctx: &mut TxContext
+    ) {
+        let memory = create_semantic_memory(clock, ctx);
+        transfer::transfer(memory, tx_context::sender(ctx));
+    }
+
+    /// Entry function: create shared episodic memory
+    public entry fun create_shared_episodic(
+        clock: &Clock,
+        ctx: &mut TxContext
+    ) {
+        let memory = create_episodic_memory(clock, ctx);
+        transfer::share_object(memory);
+    }
+
+    /// Entry function: create shared semantic memory
+    public entry fun create_shared_semantic(
+        clock: &Clock,
+        ctx: &mut TxContext
+    ) {
+        let memory = create_semantic_memory(clock, ctx);
+        transfer::share_object(memory);
+    }
+
+    // ============ Append (Episodic Only) ============
+
+    /// Append an entry to episodic memory
+    public fun append_memory(
+        memory: &mut MemoryObject,
+        payload: vector<u8>,
+        clock: &Clock,
+        ctx: &mut TxContext
+    ) {
+        assert!(memory.schema_type == SCHEMA_EPISODIC, ESchemaTypeMismatch);
+        
+        let entry = EpisodicEntry {
+            timestamp: clock::timestamp_ms(clock),
+            actor: tx_context::sender(ctx),
+            payload,
+        };
+        
+        // Serialize and append entry
+        let entry_bytes = bcs::to_bytes(&entry);
+        let entry_len = vector::length(&entry_bytes);
+        
+        // Prepend length as u32 for parsing
+        let len_bytes = bcs::to_bytes(&(entry_len as u32));
+        vector::append(&mut memory.data, len_bytes);
+        vector::append(&mut memory.data, entry_bytes);
+        
+        memory.version = memory.version + 1;
+    }
+
+    /// Entry function: append to episodic memory
+    public entry fun append(
+        memory: &mut MemoryObject,
+        payload: vector<u8>,
+        clock: &Clock,
+        ctx: &mut TxContext
+    ) {
+        append_memory(memory, payload, clock, ctx);
+    }
+
+    // ============ Update (Semantic Only) ============
+
+    /// Update or insert a key-value pair in semantic memory
+    public fun update_memory(
+        memory: &mut MemoryObject,
+        key: vector<u8>,
+        value: vector<u8>,
+        clock: &Clock,
+        _ctx: &mut TxContext
+    ) {
+        assert!(memory.schema_type == SCHEMA_SEMANTIC, ESchemaTypeMismatch);
+        
+        let entry = SemanticEntry {
+            key,
+            value,
+            updated_at: clock::timestamp_ms(clock),
+        };
+        
+        // For V1: simple append-based storage
+        // Each update appends; latest value for key wins on read
+        let entry_bytes = bcs::to_bytes(&entry);
+        let entry_len = vector::length(&entry_bytes);
+        
+        let len_bytes = bcs::to_bytes(&(entry_len as u32));
+        vector::append(&mut memory.data, len_bytes);
+        vector::append(&mut memory.data, entry_bytes);
+        
+        memory.version = memory.version + 1;
+    }
+
+    /// Entry function: update semantic memory
+    public entry fun update(
+        memory: &mut MemoryObject,
+        key: vector<u8>,
+        value: vector<u8>,
+        clock: &Clock,
+        ctx: &mut TxContext
+    ) {
+        update_memory(memory, key, value, clock, ctx);
+    }
+
+    // ============ Read Functions ============
+
+    /// Get the raw data bytes (off-chain interpretation)
+    public fun read_data(memory: &MemoryObject): &vector<u8> {
+        &memory.data
+    }
+
+    /// Get memory metadata
+    public fun get_id(memory: &MemoryObject): ID {
+        object::uid_to_inner(&memory.id)
+    }
+
+    public fun get_schema_type(memory: &MemoryObject): u8 {
+        memory.schema_type
+    }
+
+    public fun get_version(memory: &MemoryObject): u64 {
+        memory.version
+    }
+
+    public fun get_created_at(memory: &MemoryObject): u64 {
+        memory.created_at
+    }
+
+    /// Check if memory is episodic
+    public fun is_episodic(memory: &MemoryObject): bool {
+        memory.schema_type == SCHEMA_EPISODIC
+    }
+
+    /// Check if memory is semantic
+    public fun is_semantic(memory: &MemoryObject): bool {
+        memory.schema_type == SCHEMA_SEMANTIC
+    }
+
+    // ============ Destroy ============
+
+    /// Destroy a memory object (only owner can call)
+    public fun destroy(memory: MemoryObject) {
+        let MemoryObject { id, schema_type: _, data: _, version: _, created_at: _ } = memory;
+        object::delete(id);
+    }
+
+    // ============ Test Helpers ============
+
+    #[test_only]
+    public fun schema_episodic(): u8 { SCHEMA_EPISODIC }
+
+    #[test_only]
+    public fun schema_semantic(): u8 { SCHEMA_SEMANTIC }
+}
