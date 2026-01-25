@@ -1,6 +1,7 @@
 module manta::cap {
     use sui::clock::Clock;
     use manta::memory::{Self, MemoryObject};
+    use manta::events;
 
     // ============ Permission Constants ============
     
@@ -33,17 +34,34 @@ module manta::cap {
         memory: &MemoryObject,
         permissions: u8,
         expiry: Option<u64>,
+        recipient: address,
         clock: &Clock,
         ctx: &mut TxContext
     ): MemoryCap {
         assert!(permissions > 0 && permissions <= 7, EInvalidPermissions);
         
-        MemoryCap {
-            id: object::new(ctx),
-            memory_id: memory::get_id(memory),
+        let id = object::new(ctx);
+        let cap_id = id.to_inner();
+        let memory_id = memory::get_id(memory);
+        let created_at = clock.timestamp_ms();
+        let grantor = ctx.sender();
+        
+        events::emit_capability_delegated(
+            cap_id,
+            memory_id,
+            grantor,
+            recipient,
             permissions,
             expiry,
-            created_at: clock.timestamp_ms(),
+            created_at,
+        );
+        
+        MemoryCap {
+            id,
+            memory_id,
+            permissions,
+            expiry,
+            created_at,
         }
     }
 
@@ -55,7 +73,7 @@ module manta::cap {
         clock: &Clock,
         ctx: &mut TxContext
     ) {
-        let cap = delegate_access(memory, PERM_READ, expiry_ms, clock, ctx);
+        let cap = delegate_access(memory, PERM_READ, expiry_ms, recipient, clock, ctx);
         transfer::transfer(cap, recipient);
     }
 
@@ -67,7 +85,7 @@ module manta::cap {
         clock: &Clock,
         ctx: &mut TxContext
     ) {
-        let cap = delegate_access(memory, PERM_READ | PERM_APPEND, expiry_ms, clock, ctx);
+        let cap = delegate_access(memory, PERM_READ | PERM_APPEND, expiry_ms, recipient, clock, ctx);
         transfer::transfer(cap, recipient);
     }
 
@@ -79,7 +97,7 @@ module manta::cap {
         clock: &Clock,
         ctx: &mut TxContext
     ) {
-        let cap = delegate_access(memory, PERM_READ | PERM_UPDATE, expiry_ms, clock, ctx);
+        let cap = delegate_access(memory, PERM_READ | PERM_UPDATE, expiry_ms, recipient, clock, ctx);
         transfer::transfer(cap, recipient);
     }
 
@@ -91,21 +109,24 @@ module manta::cap {
         clock: &Clock,
         ctx: &mut TxContext
     ) {
-        let cap = delegate_access(memory, PERM_READ | PERM_APPEND | PERM_UPDATE, expiry_ms, clock, ctx);
+        let cap = delegate_access(memory, PERM_READ | PERM_APPEND | PERM_UPDATE, expiry_ms, recipient, clock, ctx);
         transfer::transfer(cap, recipient);
     }
 
     // ============ Revocation ============
 
     /// Revoke access by destroying the capability
-    public fun revoke_access(cap: MemoryCap) {
-        let MemoryCap { id, memory_id: _, permissions: _, expiry: _, created_at: _ } = cap;
+    public fun revoke_access(cap: MemoryCap, ctx: &TxContext) {
+        let MemoryCap { id, memory_id, permissions: _, expiry: _, created_at: _ } = cap;
+        
+        events::emit_capability_revoked(id.to_inner(), memory_id, ctx.sender());
+        
         id.delete();
     }
 
     /// Entry function: revoke access
-    entry fun revoke(cap: MemoryCap) {
-        revoke_access(cap);
+    entry fun revoke(cap: MemoryCap, ctx: &TxContext) {
+        revoke_access(cap, ctx);
     }
 
     // ============ Validation ============
@@ -162,6 +183,15 @@ module manta::cap {
         ctx: &mut TxContext
     ) {
         assert_valid_cap(cap, memory, PERM_APPEND, clock);
+        
+        events::emit_capability_used(
+            cap.id.to_inner(),
+            cap.memory_id,
+            ctx.sender(),
+            PERM_APPEND,
+            clock.timestamp_ms(),
+        );
+        
         memory::append_memory(memory, payload, clock, ctx);
     }
 
@@ -175,6 +205,15 @@ module manta::cap {
         ctx: &mut TxContext
     ) {
         assert_valid_cap(cap, memory, PERM_UPDATE, clock);
+        
+        events::emit_capability_used(
+            cap.id.to_inner(),
+            cap.memory_id,
+            ctx.sender(),
+            PERM_UPDATE,
+            clock.timestamp_ms(),
+        );
+        
         memory::update_memory(memory, key, value, clock, ctx);
     }
 
@@ -202,6 +241,10 @@ module manta::cap {
     }
 
     // ============ Getters ============
+
+    public fun get_cap_id(cap: &MemoryCap): ID {
+        cap.id.to_inner()
+    }
 
     public fun get_memory_id(cap: &MemoryCap): ID {
         cap.memory_id

@@ -2,6 +2,8 @@
 module manta::memory {
     use sui::clock::Clock;
     use sui::bcs;
+    use sui::hash;
+    use manta::events;
 
     // ============ Constants ============
     
@@ -44,12 +46,19 @@ module manta::memory {
         clock: &Clock,
         ctx: &mut TxContext
     ): MemoryObject {
+        let id = object::new(ctx);
+        let memory_id = id.to_inner();
+        let created_at = clock.timestamp_ms();
+        let owner = ctx.sender();
+        
+        events::emit_memory_created(memory_id, SCHEMA_EPISODIC, owner, created_at);
+        
         MemoryObject {
-            id: object::new(ctx),
+            id,
             schema_type: SCHEMA_EPISODIC,
             data: vector::empty(),
             version: 0,
-            created_at: clock.timestamp_ms(),
+            created_at,
         }
     }
 
@@ -58,12 +67,19 @@ module manta::memory {
         clock: &Clock,
         ctx: &mut TxContext
     ): MemoryObject {
+        let id = object::new(ctx);
+        let memory_id = id.to_inner();
+        let created_at = clock.timestamp_ms();
+        let owner = ctx.sender();
+        
+        events::emit_memory_created(memory_id, SCHEMA_SEMANTIC, owner, created_at);
+        
         MemoryObject {
-            id: object::new(ctx),
+            id,
             schema_type: SCHEMA_SEMANTIC,
             data: vector::empty(),
             version: 0,
-            created_at: clock.timestamp_ms(),
+            created_at,
         }
     }
 
@@ -114,9 +130,13 @@ module manta::memory {
     ) {
         assert!(memory.schema_type == SCHEMA_EPISODIC, ESchemaTypeMismatch);
         
+        let timestamp = clock.timestamp_ms();
+        let actor = ctx.sender();
+        let payload_size = payload.length();
+        
         let entry = EpisodicEntry {
-            timestamp: clock.timestamp_ms(),
-            actor: ctx.sender(),
+            timestamp,
+            actor,
             payload,
         };
         
@@ -130,6 +150,14 @@ module manta::memory {
         memory.data.append(entry_bytes);
         
         memory.version = memory.version + 1;
+        
+        events::emit_episodic_append(
+            memory.id.to_inner(),
+            actor,
+            memory.version,
+            (payload_size as u64),
+            timestamp,
+        );
     }
 
     /// Entry function: append to episodic memory
@@ -150,14 +178,20 @@ module manta::memory {
         key: vector<u8>,
         value: vector<u8>,
         clock: &Clock,
-        _ctx: &mut TxContext
+        ctx: &mut TxContext
     ) {
         assert!(memory.schema_type == SCHEMA_SEMANTIC, ESchemaTypeMismatch);
+        
+        let timestamp = clock.timestamp_ms();
+        let actor = ctx.sender();
+        
+        // Hash the key for the event (keeps events compact)
+        let key_hash = hash::blake2b256(&key);
         
         let entry = SemanticEntry {
             key,
             value,
-            updated_at: clock.timestamp_ms(),
+            updated_at: timestamp,
         };
         
         // For V1: simple append-based storage
@@ -170,6 +204,14 @@ module manta::memory {
         memory.data.append(entry_bytes);
         
         memory.version = memory.version + 1;
+        
+        events::emit_semantic_update(
+            memory.id.to_inner(),
+            actor,
+            memory.version,
+            key_hash,
+            timestamp,
+        );
     }
 
     /// Entry function: update semantic memory
@@ -221,7 +263,10 @@ module manta::memory {
 
     /// Destroy a memory object (only owner can call)
     public fun destroy(memory: MemoryObject) {
-        let MemoryObject { id, schema_type: _, data: _, version: _, created_at: _ } = memory;
+        let MemoryObject { id, schema_type: _, data: _, version, created_at: _ } = memory;
+        
+        events::emit_memory_destroyed(id.to_inner(), version);
+        
         id.delete();
     }
 

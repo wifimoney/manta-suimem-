@@ -147,7 +147,7 @@ module manta::tests {
         scenario.next_tx(OWNER);
         {
             let memory = scenario.take_from_sender<MemoryObject>();
-            let cap = cap::delegate_access(&memory, cap::perm_read(), option::none(), &clock, scenario.ctx());
+            let cap = cap::delegate_access(&memory, cap::perm_read(), option::none(), DELEGATE, &clock, scenario.ctx());
             transfer::public_transfer(cap, DELEGATE);
             scenario.return_to_sender(memory);
         };
@@ -185,7 +185,8 @@ module manta::tests {
             let cap = cap::delegate_access(
                 &memory, 
                 cap::perm_read() | cap::perm_append(), 
-                option::none(), 
+                option::none(),
+                DELEGATE,
                 &clock, 
                 scenario.ctx()
             );
@@ -224,7 +225,7 @@ module manta::tests {
         scenario.next_tx(OWNER);
         {
             let memory = scenario.take_from_sender<MemoryObject>();
-            let cap = cap::delegate_access(&memory, cap::perm_read(), option::none(), &clock, scenario.ctx());
+            let cap = cap::delegate_access(&memory, cap::perm_read(), option::none(), DELEGATE, &clock, scenario.ctx());
             transfer::public_transfer(cap, DELEGATE);
             scenario.return_to_sender(memory);
         };
@@ -233,7 +234,7 @@ module manta::tests {
         scenario.next_tx(DELEGATE);
         {
             let cap = scenario.take_from_sender<MemoryCap>();
-            cap::revoke_access(cap);
+            cap::revoke_access(cap, scenario.ctx());
         };
         
         // Verify cap no longer exists
@@ -266,7 +267,8 @@ module manta::tests {
             let cap = cap::delegate_access(
                 &memory, 
                 cap::perm_read() | cap::perm_append(), 
-                option::some(1000), 
+                option::some(1000),
+                DELEGATE,
                 &clock, 
                 scenario.ctx()
             );
@@ -311,7 +313,7 @@ module manta::tests {
         scenario.next_tx(OWNER);
         {
             let memory = scenario.take_shared<MemoryObject>();
-            let cap = cap::delegate_access(&memory, cap::perm_read(), option::none(), &clock, scenario.ctx());
+            let cap = cap::delegate_access(&memory, cap::perm_read(), option::none(), DELEGATE, &clock, scenario.ctx());
             transfer::public_transfer(cap, DELEGATE);
             ts::return_shared(memory);
         };
