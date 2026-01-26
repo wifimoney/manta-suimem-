@@ -1,28 +1,16 @@
 import { SuiClient, SuiTransactionBlockResponse } from '@mysten/sui/client';
 import { Transaction } from '@mysten/sui/transactions';
 
-/**
- * Manta Package IDs by network
- */
 declare const PACKAGE_IDS: {
     readonly mainnet: "";
     readonly testnet: "0x61f59d91f6ac0c1a321a2682d7d70cab4bc0425ed1d8b417d2494f0bbc0d6be0";
     readonly devnet: "0x759a1ecfbfe2c157430a9d6c3138e40b971d0fc4ee8e0e1f67e6a3873232c6c7";
 };
-/**
- * Sui Clock object ID (shared across all networks)
- */
 declare const CLOCK_ID = "0x6";
-/**
- * Memory schema types
- */
 declare const SchemaType: {
     readonly EPISODIC: 0;
     readonly SEMANTIC: 1;
 };
-/**
- * Permission flags for MemoryCap
- */
 declare const Permissions: {
     readonly READ: 1;
     readonly APPEND: 2;
@@ -31,16 +19,9 @@ declare const Permissions: {
     readonly READ_UPDATE: 5;
     readonly FULL: 7;
 };
-/**
- * Module names
- */
 declare const MODULES: {
     readonly MEMORY: "memory";
-    readonly EVENTS: "events";
 };
-/**
- * Function names
- */
 declare const FUNCTIONS: {
     readonly CREATE_EPISODIC: "create_episodic";
     readonly CREATE_SEMANTIC: "create_semantic";
@@ -57,10 +38,11 @@ declare const FUNCTIONS: {
     readonly DELEGATE_FULL: "delegate_full";
     readonly REVOKE: "revoke";
     readonly DESTROY: "destroy";
+    readonly TRANSFER_OWNERSHIP: "transfer_ownership";
 };
 type Network = keyof typeof PACKAGE_IDS;
-type SchemaTypeValue = typeof SchemaType[keyof typeof SchemaType];
-type PermissionValue = typeof Permissions[keyof typeof Permissions];
+type SchemaTypeValue = (typeof SchemaType)[keyof typeof SchemaType];
+type PermissionValue = (typeof Permissions)[keyof typeof Permissions];
 
 /**
  * Parsed MemoryObject

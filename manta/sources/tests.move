@@ -344,6 +344,35 @@ module manta::tests {
     }
 
     #[test]
+    #[expected_failure(abort_code = memory::ENotOwner)]
+    fun test_non_owner_cannot_destroy() {
+        let mut scenario = setup();
+        let mut clock = clock(&mut scenario);
+        
+        ts::next_tx(&mut scenario, OWNER);
+        {
+            memory::create_episodic(&clock, ts::ctx(&mut scenario));
+        };
+        
+        ts::next_tx(&mut scenario, OWNER);
+        {
+            let memory = ts::take_from_sender<MemoryObject>(&scenario);
+            transfer::public_transfer(memory, ATTACKER);
+        };
+        
+        // ATTACKER now holds the object but is not the owner field
+        ts::next_tx(&mut scenario, ATTACKER);
+        {
+            let memory = ts::take_from_sender<MemoryObject>(&scenario);
+            // This should fail - ATTACKER is holder but not owner
+            memory::destroy(memory, ts::ctx(&mut scenario));
+        };
+        
+        clock.destroy_for_testing();
+        ts::end(scenario);
+    }
+
+    #[test]
     fun test_destroy_memory() {
         let mut scenario = setup();
         let mut clock = clock(&mut scenario);
