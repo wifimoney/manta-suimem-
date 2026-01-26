@@ -5,6 +5,7 @@ import type { SchemaTypeValue, PermissionValue } from './constants';
  */
 export interface MemoryObjectRaw {
   id: { id: string };
+  owner: string;
   schema_type: number;
   data: number[];
   version: string;
@@ -16,6 +17,7 @@ export interface MemoryObjectRaw {
  */
 export interface MemoryObject {
   id: string;
+  owner: string;
   schemaType: SchemaTypeValue;
   data: Uint8Array;
   version: bigint;
@@ -125,12 +127,3 @@ export type MantaEvent =
   | { type: 'CapabilityRevoked'; data: CapabilityRevokedEvent }
   | { type: 'CapabilityUsed'; data: CapabilityUsedEvent }
   | { type: 'MemoryDestroyed'; data: MemoryDestroyedEvent };
-
-/**
- * Transaction result
- */
-export interface MantaTxResult {
-  digest: string;
-  objectId?: string;
-  events: MantaEvent[];
-}

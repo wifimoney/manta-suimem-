@@ -20,7 +20,6 @@ export type {
   MemoryCap,
   EpisodicEntry,
   SemanticEntry,
-  MantaTxResult,
   MantaEvent,
   MemoryCreatedEvent,
   EpisodicAppendEvent,

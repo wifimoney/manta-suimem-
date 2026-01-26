@@ -2,9 +2,9 @@
  * Manta Package IDs by network
  */
 export const PACKAGE_IDS = {
-  mainnet: '', // Not yet deployed
-  testnet: '0xbd9a427e3a8145364e7ffeeb5a317cbf9495e65830b1c1c4c242e6b31576101c',
-  devnet: '0x759a1ecfbfe2c157430a9d6c3138e40b971d0fc4ee8e0e1f67e6a3873232c6c7',
+  mainnet: '',
+  testnet: '0x61f59d91f6ac0c1a321a2682d7d70cab4bc0425ed1d8b417d2494f0bbc0d6be0',
+  devnet: '0x759a1ecfbfe2c157430a9d6c3138e40b971d0fc4ee8e0e1f67e6a3873232c6c7', // Still V1.2
 } as const;
 
 /**
@@ -68,3 +68,4 @@ export const FUNCTIONS = {
 export type Network = keyof typeof PACKAGE_IDS;
 export type SchemaTypeValue = typeof SchemaType[keyof typeof SchemaType];
 export type PermissionValue = typeof Permissions[keyof typeof Permissions];
+

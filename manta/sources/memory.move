@@ -1,44 +1,40 @@
-#[allow(lint(share_owned))]
+/// Manta: Sui-native on-chain memory primitive
+/// 
+/// Provides persistent memory storage with capability-based access control.
+/// Supports two schemas: episodic (append-only) and semantic (key-value).
 module manta::memory {
     use sui::clock::Clock;
-    use sui::bcs;
-    use sui::hash;
-    use manta::events;
+    use sui::event;
 
-    // ============ Schema Constants ============
+    // ============ Error Codes ============
+    
+    const EInvalidSchemaType: u64 = 0;
+    const EWrongMemory: u64 = 1;
+    const EPermissionDenied: u64 = 2;
+    const ECapabilityExpired: u64 = 3;
+    const EInvalidPermissions: u64 = 4;
+    const ENotOwner: u64 = 5;
+
+    // ============ Constants ============
     
     const SCHEMA_EPISODIC: u8 = 0;
     const SCHEMA_SEMANTIC: u8 = 1;
 
-    // ============ Permission Constants ============
-    
-    const PERM_READ: u8 = 1;    // 0b001
-    const PERM_APPEND: u8 = 2;  // 0b010
-    const PERM_UPDATE: u8 = 4;  // 0b100
-
-    // ============ Errors ============
-    
-    const ESchemaTypeMismatch: u64 = 1;
-    const EPermissionDenied: u64 = 100;
-    const ECapabilityExpired: u64 = 101;
-    const EMemoryIdMismatch: u64 = 102;
-    const EInvalidPermissions: u64 = 103;
+    const PERM_READ: u8 = 1;
+    const PERM_APPEND: u8 = 2;
+    const PERM_UPDATE: u8 = 4;
 
     // ============ Core Structs ============
 
-    /// Core memory object - the fundamental Manta primitive
-    /// Data is stored as opaque BCS-encoded bytes
-    /// Schema type indicates format: episodic (append-only) or semantic (key-value)
     public struct MemoryObject has key, store {
         id: UID,
+        owner: address,
         schema_type: u8,
         data: vector<u8>,
         version: u64,
         created_at: u64,
     }
 
-    /// Capability token granting access to a MemoryObject
-    /// Transferable, time-limited, permission-scoped
     public struct MemoryCap has key, store {
         id: UID,
         memory_id: ID,
@@ -47,19 +43,78 @@ module manta::memory {
         created_at: u64,
     }
 
-    // ============ Create Functions ============
+    // ============ Events ============
 
-    /// Create a new episodic (append-only) memory - internal
+    public struct MemoryCreated has copy, drop {
+        memory_id: ID,
+        schema_type: u8,
+        owner: address,
+        created_at: u64,
+    }
+
+    public struct EpisodicAppend has copy, drop {
+        memory_id: ID,
+        actor: address,
+        version: u64,
+        payload_size: u64,
+        timestamp: u64,
+    }
+
+    public struct SemanticUpdate has copy, drop {
+        memory_id: ID,
+        actor: address,
+        version: u64,
+        key_hash: vector<u8>,
+        timestamp: u64,
+    }
+
+    public struct MemoryDestroyed has copy, drop {
+        memory_id: ID,
+        final_version: u64,
+    }
+
+    public struct CapabilityDelegated has copy, drop {
+        cap_id: ID,
+        memory_id: ID,
+        grantor: address,
+        grantee: address,
+        permissions: u8,
+        expiry: Option<u64>,
+        created_at: u64,
+    }
+
+    public struct CapabilityRevoked has copy, drop {
+        cap_id: ID,
+        memory_id: ID,
+        revoked_by: address,
+    }
+
+    public struct CapabilityUsed has copy, drop {
+        cap_id: ID,
+        memory_id: ID,
+        actor: address,
+        operation: u8,
+        timestamp: u64,
+    }
+
+    // ============ Internal Constructors ============
+
     fun new_episodic(clock: &Clock, ctx: &mut TxContext): MemoryObject {
         let id = object::new(ctx);
-        let memory_id = id.to_inner();
-        let created_at = clock.timestamp_ms();
+        let memory_id = object::uid_to_inner(&id);
         let owner = ctx.sender();
+        let created_at = clock.timestamp_ms();
         
-        events::emit_memory_created(memory_id, SCHEMA_EPISODIC, owner, created_at);
-        
+        event::emit(MemoryCreated {
+            memory_id,
+            schema_type: SCHEMA_EPISODIC,
+            owner,
+            created_at,
+        });
+
         MemoryObject {
             id,
+            owner,
             schema_type: SCHEMA_EPISODIC,
             data: vector::empty(),
             version: 0,
@@ -67,17 +122,22 @@ module manta::memory {
         }
     }
 
-    /// Create a new semantic (key-value) memory - internal
     fun new_semantic(clock: &Clock, ctx: &mut TxContext): MemoryObject {
         let id = object::new(ctx);
-        let memory_id = id.to_inner();
-        let created_at = clock.timestamp_ms();
+        let memory_id = object::uid_to_inner(&id);
         let owner = ctx.sender();
+        let created_at = clock.timestamp_ms();
         
-        events::emit_memory_created(memory_id, SCHEMA_SEMANTIC, owner, created_at);
-        
+        event::emit(MemoryCreated {
+            memory_id,
+            schema_type: SCHEMA_SEMANTIC,
+            owner,
+            created_at,
+        });
+
         MemoryObject {
             id,
+            owner,
             schema_type: SCHEMA_SEMANTIC,
             data: vector::empty(),
             version: 0,
@@ -85,47 +145,65 @@ module manta::memory {
         }
     }
 
-    /// Entry: create private episodic memory
+    fun new_cap(
+        memory_id: ID,
+        permissions: u8,
+        expiry: Option<u64>,
+        clock: &Clock,
+        ctx: &mut TxContext
+    ): MemoryCap {
+        assert!(permissions > 0 && permissions <= 7, EInvalidPermissions);
+        
+        MemoryCap {
+            id: object::new(ctx),
+            memory_id,
+            permissions,
+            expiry,
+            created_at: clock.timestamp_ms(),
+        }
+    }
+
+    // ============ Create Functions ============
+
     entry fun create_episodic(clock: &Clock, ctx: &mut TxContext) {
         let memory = new_episodic(clock, ctx);
         transfer::transfer(memory, ctx.sender());
     }
 
-    /// Entry: create private semantic memory
     entry fun create_semantic(clock: &Clock, ctx: &mut TxContext) {
         let memory = new_semantic(clock, ctx);
         transfer::transfer(memory, ctx.sender());
     }
 
-    /// Entry: create shared episodic memory (append-only by cap holders)
     entry fun create_shared_episodic(clock: &Clock, ctx: &mut TxContext) {
         let memory = new_episodic(clock, ctx);
         transfer::share_object(memory);
     }
 
-    /// Entry: create shared semantic memory (cap-gated writes)
     entry fun create_shared_semantic(clock: &Clock, ctx: &mut TxContext) {
         let memory = new_semantic(clock, ctx);
         transfer::share_object(memory);
     }
 
-    // ============ Write Functions (Owner) ============
+    // ============ Owner Check ============
 
-    /// Append payload to episodic memory (owner only)
+    fun assert_is_owner(memory: &MemoryObject, ctx: &TxContext) {
+        assert!(ctx.sender() == memory.owner, ENotOwner);
+    }
+
+    // ============ Write Functions (Owner Only) ============
+
     entry fun append(
         memory: &mut MemoryObject,
         payload: vector<u8>,
         clock: &Clock,
         ctx: &TxContext
     ) {
-        assert!(memory.schema_type == SCHEMA_EPISODIC, ESchemaTypeMismatch);
-        
-        let timestamp = clock.timestamp_ms();
-        let actor = ctx.sender();
-        append_internal(memory, payload, timestamp, actor);
+        assert_is_owner(memory, ctx);
+        assert!(memory.schema_type == SCHEMA_EPISODIC, EInvalidSchemaType);
+        append_internal(memory, payload, ctx.sender(), clock);
     }
 
-    /// Update key-value in semantic memory (owner only)
     entry fun update(
         memory: &mut MemoryObject,
         key: vector<u8>,
@@ -133,198 +211,13 @@ module manta::memory {
         clock: &Clock,
         ctx: &TxContext
     ) {
-        assert!(memory.schema_type == SCHEMA_SEMANTIC, ESchemaTypeMismatch);
-        
-        let timestamp = clock.timestamp_ms();
-        let actor = ctx.sender();
-        update_internal(memory, key, value, timestamp, actor);
-    }
-
-    // ============ Internal Write Helpers ============
-
-    /// Internal append - used by both owner and cap-gated paths
-    fun append_internal(
-        memory: &mut MemoryObject,
-        payload: vector<u8>,
-        timestamp: u64,
-        actor: address
-    ) {
-        let payload_size = payload.length();
-        
-        // BCS encode: timestamp + actor + payload
-        let mut entry_bytes = bcs::to_bytes(&timestamp);
-        entry_bytes.append(bcs::to_bytes(&actor));
-        let payload_len = payload.length() as u32;
-        entry_bytes.append(bcs::to_bytes(&payload_len));
-        entry_bytes.append(payload);
-        
-        // Prepend total length
-        let entry_len = entry_bytes.length() as u32;
-        let mut len_bytes = bcs::to_bytes(&entry_len);
-        len_bytes.append(entry_bytes);
-        
-        memory.data.append(len_bytes);
-        memory.version = memory.version + 1;
-        
-        events::emit_episodic_append(
-            memory.id.to_inner(),
-            actor,
-            memory.version,
-            payload_size as u64,
-            timestamp,
-        );
-    }
-
-    /// Internal update - used by both owner and cap-gated paths
-    fun update_internal(
-        memory: &mut MemoryObject,
-        key: vector<u8>,
-        value: vector<u8>,
-        timestamp: u64,
-        actor: address
-    ) {
-        let key_hash = hash::blake2b256(&key);
-        
-        // BCS encode: key + value + updated_at
-        let key_len = key.length() as u32;
-        let value_len = value.length() as u32;
-        
-        let mut entry_bytes = bcs::to_bytes(&key_len);
-        entry_bytes.append(key);
-        entry_bytes.append(bcs::to_bytes(&value_len));
-        entry_bytes.append(value);
-        entry_bytes.append(bcs::to_bytes(&timestamp));
-        
-        // Prepend total length
-        let entry_len = entry_bytes.length() as u32;
-        let mut len_bytes = bcs::to_bytes(&entry_len);
-        len_bytes.append(entry_bytes);
-        
-        memory.data.append(len_bytes);
-        memory.version = memory.version + 1;
-        
-        events::emit_semantic_update(
-            memory.id.to_inner(),
-            actor,
-            memory.version,
-            key_hash,
-            timestamp,
-        );
-    }
-
-    // ============ Capability Delegation ============
-
-    /// Delegate access to memory - creates a transferable capability
-    entry fun delegate(
-        memory: &MemoryObject,
-        recipient: address,
-        permissions: u8,
-        expiry_ms: Option<u64>,
-        clock: &Clock,
-        ctx: &mut TxContext
-    ) {
-        assert!(permissions > 0 && permissions <= 7, EInvalidPermissions);
-        
-        let cap = new_cap(memory, permissions, expiry_ms, recipient, clock, ctx);
-        transfer::transfer(cap, recipient);
-    }
-
-    /// Delegate read-only access
-    entry fun delegate_read(
-        memory: &MemoryObject,
-        recipient: address,
-        expiry_ms: Option<u64>,
-        clock: &Clock,
-        ctx: &mut TxContext
-    ) {
-        let cap = new_cap(memory, PERM_READ, expiry_ms, recipient, clock, ctx);
-        transfer::transfer(cap, recipient);
-    }
-
-    /// Delegate read + append access
-    entry fun delegate_append(
-        memory: &MemoryObject,
-        recipient: address,
-        expiry_ms: Option<u64>,
-        clock: &Clock,
-        ctx: &mut TxContext
-    ) {
-        let cap = new_cap(memory, PERM_READ | PERM_APPEND, expiry_ms, recipient, clock, ctx);
-        transfer::transfer(cap, recipient);
-    }
-
-    /// Delegate read + update access
-    entry fun delegate_update(
-        memory: &MemoryObject,
-        recipient: address,
-        expiry_ms: Option<u64>,
-        clock: &Clock,
-        ctx: &mut TxContext
-    ) {
-        let cap = new_cap(memory, PERM_READ | PERM_UPDATE, expiry_ms, recipient, clock, ctx);
-        transfer::transfer(cap, recipient);
-    }
-
-    /// Delegate full access (read + append + update)
-    entry fun delegate_full(
-        memory: &MemoryObject,
-        recipient: address,
-        expiry_ms: Option<u64>,
-        clock: &Clock,
-        ctx: &mut TxContext
-    ) {
-        let cap = new_cap(memory, PERM_READ | PERM_APPEND | PERM_UPDATE, expiry_ms, recipient, clock, ctx);
-        transfer::transfer(cap, recipient);
-    }
-
-    /// Internal: create capability object
-    fun new_cap(
-        memory: &MemoryObject,
-        permissions: u8,
-        expiry: Option<u64>,
-        recipient: address,
-        clock: &Clock,
-        ctx: &mut TxContext
-    ): MemoryCap {
-        let id = object::new(ctx);
-        let cap_id = id.to_inner();
-        let memory_id = memory.id.to_inner();
-        let created_at = clock.timestamp_ms();
-        let grantor = ctx.sender();
-        
-        events::emit_capability_delegated(
-            cap_id,
-            memory_id,
-            grantor,
-            recipient,
-            permissions,
-            expiry,
-            created_at,
-        );
-        
-        MemoryCap {
-            id,
-            memory_id,
-            permissions,
-            expiry,
-            created_at,
-        }
-    }
-
-    // ============ Capability Revocation ============
-
-    /// Revoke access by destroying capability
-    entry fun revoke(cap: MemoryCap, ctx: &TxContext) {
-        let MemoryCap { id, memory_id, permissions: _, expiry: _, created_at: _ } = cap;
-        
-        events::emit_capability_revoked(id.to_inner(), memory_id, ctx.sender());
-        
-        id.delete();
+        assert_is_owner(memory, ctx);
+        assert!(memory.schema_type == SCHEMA_SEMANTIC, EInvalidSchemaType);
+        update_internal(memory, key, value, ctx.sender(), clock);
     }
 
     // ============ Cap-Gated Write Functions ============
 
-    /// Append using capability (for shared memory)
     entry fun cap_append(
         memory: &mut MemoryObject,
         cap: &MemoryCap,
@@ -332,24 +225,20 @@ module manta::memory {
         clock: &Clock,
         ctx: &TxContext
     ) {
-        assert!(memory.schema_type == SCHEMA_EPISODIC, ESchemaTypeMismatch);
         assert_valid_cap(cap, memory, PERM_APPEND, clock);
+        assert!(memory.schema_type == SCHEMA_EPISODIC, EInvalidSchemaType);
         
-        let timestamp = clock.timestamp_ms();
-        let actor = ctx.sender();
+        event::emit(CapabilityUsed {
+            cap_id: object::uid_to_inner(&cap.id),
+            memory_id: cap.memory_id,
+            actor: ctx.sender(),
+            operation: PERM_APPEND,
+            timestamp: clock.timestamp_ms(),
+        });
         
-        events::emit_capability_used(
-            cap.id.to_inner(),
-            cap.memory_id,
-            actor,
-            PERM_APPEND,
-            timestamp,
-        );
-        
-        append_internal(memory, payload, timestamp, actor);
+        append_internal(memory, payload, ctx.sender(), clock);
     }
 
-    /// Update using capability (for shared memory)
     entry fun cap_update(
         memory: &mut MemoryObject,
         cap: &MemoryCap,
@@ -358,60 +247,270 @@ module manta::memory {
         clock: &Clock,
         ctx: &TxContext
     ) {
-        assert!(memory.schema_type == SCHEMA_SEMANTIC, ESchemaTypeMismatch);
         assert_valid_cap(cap, memory, PERM_UPDATE, clock);
+        assert!(memory.schema_type == SCHEMA_SEMANTIC, EInvalidSchemaType);
         
+        event::emit(CapabilityUsed {
+            cap_id: object::uid_to_inner(&cap.id),
+            memory_id: cap.memory_id,
+            actor: ctx.sender(),
+            operation: PERM_UPDATE,
+            timestamp: clock.timestamp_ms(),
+        });
+        
+        update_internal(memory, key, value, ctx.sender(), clock);
+    }
+
+    // ============ Internal Write Helpers ============
+
+    fun append_internal(
+        memory: &mut MemoryObject,
+        payload: vector<u8>,
+        actor: address,
+        clock: &Clock
+    ) {
         let timestamp = clock.timestamp_ms();
-        let actor = ctx.sender();
+        let mut entry = vector::empty<u8>();
         
-        events::emit_capability_used(
-            cap.id.to_inner(),
-            cap.memory_id,
+        let mut ts = timestamp;
+        let mut i = 0;
+        while (i < 8) {
+            entry.push_back((ts & 0xFF) as u8);
+            ts = ts >> 8;
+            i = i + 1;
+        };
+        
+        let actor_bytes = actor.to_bytes();
+        let mut j = 0;
+        while (j < 32) {
+            entry.push_back(actor_bytes[j]);
+            j = j + 1;
+        };
+        
+        let len = payload.length() as u64;
+        let mut l = len;
+        let mut k = 0;
+        while (k < 4) {
+            entry.push_back((l & 0xFF) as u8);
+            l = l >> 8;
+            k = k + 1;
+        };
+        
+        entry.append(payload);
+        
+        let entry_len = entry.length() as u64;
+        let mut final_entry = vector::empty<u8>();
+        let mut el = entry_len;
+        let mut m = 0;
+        while (m < 4) {
+            final_entry.push_back((el & 0xFF) as u8);
+            el = el >> 8;
+            m = m + 1;
+        };
+        final_entry.append(entry);
+        
+        memory.data.append(final_entry);
+        memory.version = memory.version + 1;
+        
+        event::emit(EpisodicAppend {
+            memory_id: object::uid_to_inner(&memory.id),
             actor,
-            PERM_UPDATE,
+            version: memory.version,
+            payload_size: len,
             timestamp,
-        );
+        });
+    }
+
+    fun update_internal(
+        memory: &mut MemoryObject,
+        key: vector<u8>,
+        value: vector<u8>,
+        actor: address,
+        clock: &Clock
+    ) {
+        let timestamp = clock.timestamp_ms();
+        let mut entry = vector::empty<u8>();
         
-        update_internal(memory, key, value, timestamp, actor);
+        let key_len = key.length() as u64;
+        let mut kl = key_len;
+        let mut i = 0;
+        while (i < 4) {
+            entry.push_back((kl & 0xFF) as u8);
+            kl = kl >> 8;
+            i = i + 1;
+        };
+        
+        entry.append(key);
+        
+        let value_len = value.length() as u64;
+        let mut vl = value_len;
+        let mut j = 0;
+        while (j < 4) {
+            entry.push_back((vl & 0xFF) as u8);
+            vl = vl >> 8;
+            j = j + 1;
+        };
+        
+        entry.append(value);
+        
+        let mut ts = timestamp;
+        let mut k = 0;
+        while (k < 8) {
+            entry.push_back((ts & 0xFF) as u8);
+            ts = ts >> 8;
+            k = k + 1;
+        };
+        
+        let entry_len = entry.length() as u64;
+        let mut final_entry = vector::empty<u8>();
+        let mut el = entry_len;
+        let mut m = 0;
+        while (m < 4) {
+            final_entry.push_back((el & 0xFF) as u8);
+            el = el >> 8;
+            m = m + 1;
+        };
+        final_entry.append(entry);
+        
+        memory.data.append(final_entry);
+        memory.version = memory.version + 1;
+        
+        let key_hash = std::hash::sha2_256(key);
+        
+        event::emit(SemanticUpdate {
+            memory_id: object::uid_to_inner(&memory.id),
+            actor,
+            version: memory.version,
+            key_hash,
+            timestamp,
+        });
+    }
+
+    // ============ Delegation Functions (Owner Only) ============
+
+    entry fun delegate(
+        memory: &MemoryObject,
+        recipient: address,
+        permissions: u8,
+        expiry: Option<u64>,
+        clock: &Clock,
+        ctx: &mut TxContext
+    ) {
+        assert_is_owner(memory, ctx);
+        
+        let memory_id = object::uid_to_inner(&memory.id);
+        let cap = new_cap(memory_id, permissions, expiry, clock, ctx);
+        let cap_id = object::uid_to_inner(&cap.id);
+        
+        event::emit(CapabilityDelegated {
+            cap_id,
+            memory_id,
+            grantor: ctx.sender(),
+            grantee: recipient,
+            permissions,
+            expiry,
+            created_at: clock.timestamp_ms(),
+        });
+        
+        transfer::transfer(cap, recipient);
+    }
+
+    entry fun delegate_read(
+        memory: &MemoryObject,
+        recipient: address,
+        expiry: Option<u64>,
+        clock: &Clock,
+        ctx: &mut TxContext
+    ) {
+        delegate(memory, recipient, PERM_READ, expiry, clock, ctx);
+    }
+
+    entry fun delegate_append(
+        memory: &MemoryObject,
+        recipient: address,
+        expiry: Option<u64>,
+        clock: &Clock,
+        ctx: &mut TxContext
+    ) {
+        delegate(memory, recipient, PERM_READ | PERM_APPEND, expiry, clock, ctx);
+    }
+
+    entry fun delegate_update(
+        memory: &MemoryObject,
+        recipient: address,
+        expiry: Option<u64>,
+        clock: &Clock,
+        ctx: &mut TxContext
+    ) {
+        delegate(memory, recipient, PERM_READ | PERM_UPDATE, expiry, clock, ctx);
+    }
+
+    entry fun delegate_full(
+        memory: &MemoryObject,
+        recipient: address,
+        expiry: Option<u64>,
+        clock: &Clock,
+        ctx: &mut TxContext
+    ) {
+        delegate(memory, recipient, PERM_READ | PERM_APPEND | PERM_UPDATE, expiry, clock, ctx);
+    }
+
+    // ============ Revoke & Destroy ============
+
+    entry fun revoke(cap: MemoryCap, ctx: &TxContext) {
+        let MemoryCap { id, memory_id, permissions: _, expiry: _, created_at: _ } = cap;
+        
+        event::emit(CapabilityRevoked {
+            cap_id: object::uid_to_inner(&id),
+            memory_id,
+            revoked_by: ctx.sender(),
+        });
+        
+        object::delete(id);
+    }
+
+    entry fun destroy(memory: MemoryObject, ctx: &TxContext) {
+        assert!(ctx.sender() == memory.owner, ENotOwner);
+        
+        let MemoryObject { id, owner: _, schema_type: _, data: _, version, created_at: _ } = memory;
+        
+        event::emit(MemoryDestroyed {
+            memory_id: object::uid_to_inner(&id),
+            final_version: version,
+        });
+        
+        object::delete(id);
+    }
+
+    entry fun transfer_ownership(
+        memory: &mut MemoryObject,
+        new_owner: address,
+        ctx: &TxContext
+    ) {
+        assert_is_owner(memory, ctx);
+        memory.owner = new_owner;
     }
 
     // ============ Capability Validation ============
 
-    /// Assert capability is valid (aborts if not)
-    fun assert_valid_cap(
-        cap: &MemoryCap,
-        memory: &MemoryObject,
-        required_permission: u8,
-        clock: &Clock
-    ) {
-        // Check memory ID matches
-        assert!(cap.memory_id == memory.id.to_inner(), EMemoryIdMismatch);
+    fun assert_valid_cap(cap: &MemoryCap, memory: &MemoryObject, required_perm: u8, clock: &Clock) {
+        assert!(cap.memory_id == object::uid_to_inner(&memory.id), EWrongMemory);
+        assert!((cap.permissions & required_perm) == required_perm, EPermissionDenied);
         
-        // Check expiry
         if (cap.expiry.is_some()) {
-            let exp = *cap.expiry.borrow();
-            assert!(clock.timestamp_ms() <= exp, ECapabilityExpired);
+            let expiry = *cap.expiry.borrow();
+            assert!(clock.timestamp_ms() < expiry, ECapabilityExpired);
         };
-        
-        // Check permission
-        assert!((cap.permissions & required_permission) == required_permission, EPermissionDenied);
     }
 
-    // ============ Destroy ============
-
-    /// Destroy memory object (owner only)
-    entry fun destroy(memory: MemoryObject) {
-        let MemoryObject { id, schema_type: _, data: _, version, created_at: _ } = memory;
-        
-        events::emit_memory_destroyed(id.to_inner(), version);
-        
-        id.delete();
-    }
-
-    // ============ Read Functions (Public) ============
+    // ============ Read Functions ============
 
     public fun get_id(memory: &MemoryObject): ID {
-        memory.id.to_inner()
+        object::uid_to_inner(&memory.id)
+    }
+
+    public fun get_owner(memory: &MemoryObject): address {
+        memory.owner
     }
 
     public fun get_schema_type(memory: &MemoryObject): u8 {
@@ -438,8 +537,6 @@ module manta::memory {
         memory.schema_type == SCHEMA_SEMANTIC
     }
 
-    // ============ Capability Read Functions (Public) ============
-
     public fun cap_memory_id(cap: &MemoryCap): ID {
         cap.memory_id
     }
@@ -452,23 +549,19 @@ module manta::memory {
         cap.expiry
     }
 
-    public fun cap_has_read(cap: &MemoryCap): bool {
-        (cap.permissions & PERM_READ) == PERM_READ
+    public fun cap_created_at(cap: &MemoryCap): u64 {
+        cap.created_at
     }
 
-    public fun cap_has_append(cap: &MemoryCap): bool {
-        (cap.permissions & PERM_APPEND) == PERM_APPEND
+    public fun cap_has_permission(cap: &MemoryCap, perm: u8): bool {
+        (cap.permissions & perm) == perm
     }
 
-    public fun cap_has_update(cap: &MemoryCap): bool {
-        (cap.permissions & PERM_UPDATE) == PERM_UPDATE
+    public fun cap_is_expired(cap: &MemoryCap, clock: &Clock): bool {
+        if (cap.expiry.is_some()) {
+            clock.timestamp_ms() >= *cap.expiry.borrow()
+        } else {
+            false
+        }
     }
-
-    // ============ Constants (Public) ============
-
-    public fun schema_episodic(): u8 { SCHEMA_EPISODIC }
-    public fun schema_semantic(): u8 { SCHEMA_SEMANTIC }
-    public fun perm_read(): u8 { PERM_READ }
-    public fun perm_append(): u8 { PERM_APPEND }
-    public fun perm_update(): u8 { PERM_UPDATE }
 }

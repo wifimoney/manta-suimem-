@@ -2,12 +2,16 @@ import type { EpisodicEntry, SemanticEntry } from './types';
 
 /**
  * BCS decoder utilities for Manta memory data
+ * With bounds checking for security
  */
 
 /**
  * Read a little-endian u32 from bytes
  */
 function readU32LE(data: Uint8Array, offset: number): number {
+  if (offset + 4 > data.length) {
+    throw new Error(`Buffer overflow: cannot read u32 at offset ${offset}, data length ${data.length}`);
+  }
   return (
     data[offset] |
     (data[offset + 1] << 8) |
@@ -20,6 +24,9 @@ function readU32LE(data: Uint8Array, offset: number): number {
  * Read a little-endian u64 from bytes as bigint
  */
 function readU64LE(data: Uint8Array, offset: number): bigint {
+  if (offset + 8 > data.length) {
+    throw new Error(`Buffer overflow: cannot read u64 at offset ${offset}, data length ${data.length}`);
+  }
   const low = BigInt(readU32LE(data, offset));
   const high = BigInt(readU32LE(data, offset + 4));
   return (high << 32n) | low;
@@ -29,6 +36,9 @@ function readU64LE(data: Uint8Array, offset: number): bigint {
  * Read an address (32 bytes) and return as hex string
  */
 function readAddress(data: Uint8Array, offset: number): string {
+  if (offset + 32 > data.length) {
+    throw new Error(`Buffer overflow: cannot read address at offset ${offset}, data length ${data.length}`);
+  }
   const bytes = data.slice(offset, offset + 32);
   return '0x' + Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
 }
@@ -44,9 +54,23 @@ export function decodeEpisodicEntries(data: Uint8Array): EpisodicEntry[] {
   let offset = 0;
 
   while (offset < data.length) {
-    // Read entry length
+    // Bounds check for entry length
+    if (offset + 4 > data.length) {
+      throw new Error(`Malformed data: cannot read entry length at offset ${offset}`);
+    }
+    
     const entryLen = readU32LE(data, offset);
     offset += 4;
+
+    // Validate entry fits in remaining data
+    if (offset + entryLen > data.length) {
+      throw new Error(`Malformed data: entry claims ${entryLen} bytes but only ${data.length - offset} available`);
+    }
+
+    // Validate minimum entry size (8 + 32 + 4 = 44 bytes minimum)
+    if (entryLen < 44) {
+      throw new Error(`Malformed data: entry too small (${entryLen} bytes)`);
+    }
 
     // Read timestamp (u64)
     const timestamp = readU64LE(data, offset);
@@ -59,6 +83,11 @@ export function decodeEpisodicEntries(data: Uint8Array): EpisodicEntry[] {
     // Read payload length (u32)
     const payloadLen = readU32LE(data, offset);
     offset += 4;
+
+    // Validate payload length
+    if (payloadLen > entryLen - 44) {
+      throw new Error(`Malformed data: payload length ${payloadLen} exceeds entry bounds`);
+    }
 
     // Read payload
     const payload = data.slice(offset, offset + payloadLen);
@@ -81,21 +110,50 @@ export function decodeSemanticEntries(data: Uint8Array): SemanticEntry[] {
   let offset = 0;
 
   while (offset < data.length) {
-    // Read entry length
+    // Bounds check for entry length
+    if (offset + 4 > data.length) {
+      throw new Error(`Malformed data: cannot read entry length at offset ${offset}`);
+    }
+    
     const entryLen = readU32LE(data, offset);
     offset += 4;
+
+    // Validate entry fits in remaining data
+    if (offset + entryLen > data.length) {
+      throw new Error(`Malformed data: entry claims ${entryLen} bytes but only ${data.length - offset} available`);
+    }
+
+    // Validate minimum entry size (4 + 4 + 8 = 16 bytes minimum, with empty key/value)
+    if (entryLen < 16) {
+      throw new Error(`Malformed data: entry too small (${entryLen} bytes)`);
+    }
+
+    const entryStart = offset;
 
     // Read key length (u32)
     const keyLen = readU32LE(data, offset);
     offset += 4;
+
+    // Validate key length
+    if (keyLen > entryLen - 16) {
+      throw new Error(`Malformed data: key length ${keyLen} exceeds entry bounds`);
+    }
 
     // Read key
     const key = data.slice(offset, offset + keyLen);
     offset += keyLen;
 
     // Read value length (u32)
+    if (offset + 4 > data.length) {
+      throw new Error(`Malformed data: cannot read value length at offset ${offset}`);
+    }
     const valueLen = readU32LE(data, offset);
     offset += 4;
+
+    // Validate value length
+    if (offset + valueLen + 8 > entryStart + entryLen + 4) {
+      throw new Error(`Malformed data: value length ${valueLen} exceeds entry bounds`);
+    }
 
     // Read value
     const value = data.slice(offset, offset + valueLen);
@@ -171,9 +229,16 @@ export function bytesToHex(bytes: Uint8Array): string {
  */
 export function hexToBytes(hex: string): Uint8Array {
   const clean = hex.startsWith('0x') ? hex.slice(2) : hex;
+  if (clean.length % 2 !== 0) {
+    throw new Error('Invalid hex string: odd length');
+  }
   const bytes = new Uint8Array(clean.length / 2);
   for (let i = 0; i < bytes.length; i++) {
-    bytes[i] = parseInt(clean.substr(i * 2, 2), 16);
+    const byte = parseInt(clean.substr(i * 2, 2), 16);
+    if (isNaN(byte)) {
+      throw new Error(`Invalid hex character at position ${i * 2}`);
+    }
+    bytes[i] = byte;
   }
   return bytes;
 }
