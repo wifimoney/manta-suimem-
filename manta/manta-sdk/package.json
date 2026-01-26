@@ -1,0 +1,40 @@
+{
+  "name": "@manta/sdk",
+  "version": "1.2.0",
+  "description": "TypeScript SDK for Manta - Sui On-Chain Memory Primitive",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsup src/index.ts --format cjs,esm --dts",
+    "dev": "tsup src/index.ts --format cjs,esm --dts --watch",
+    "test": "vitest",
+    "lint": "eslint src/",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "sui",
+    "blockchain",
+    "memory",
+    "agent",
+    "manta"
+  ],
+  "author": "elibelilty",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/elibelilty/manta"
+  },
+  "dependencies": {
+    "@mysten/sui": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.0.0",
+    "vitest": "^1.0.0"
+  },
+  "peerDependencies": {
+    "@mysten/sui": "^1.0.0"
+  }
+}
