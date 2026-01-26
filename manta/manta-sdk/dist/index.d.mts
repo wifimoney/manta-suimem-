@@ -4,7 +4,7 @@ import { Transaction } from '@mysten/sui/transactions';
 declare const PACKAGE_IDS: {
     readonly mainnet: "";
     readonly testnet: "0x61f59d91f6ac0c1a321a2682d7d70cab4bc0425ed1d8b417d2494f0bbc0d6be0";
-    readonly devnet: "0x759a1ecfbfe2c157430a9d6c3138e40b971d0fc4ee8e0e1f67e6a3873232c6c7";
+    readonly devnet: "0x38c55662dfe0ff2cd0e346da0bf20916afa26bb65fe86239a687b47826643e0d";
 };
 declare const CLOCK_ID = "0x6";
 declare const SchemaType: {
