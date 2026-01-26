@@ -3,7 +3,6 @@ module manta::events {
 
     // ============ Memory Events ============
 
-    /// Emitted when a new MemoryObject is created
     public struct MemoryCreated has copy, drop {
         memory_id: ID,
         schema_type: u8,
@@ -11,7 +10,6 @@ module manta::events {
         created_at: u64,
     }
 
-    /// Emitted when data is appended to episodic memory
     public struct EpisodicAppend has copy, drop {
         memory_id: ID,
         actor: address,
@@ -20,7 +18,6 @@ module manta::events {
         timestamp: u64,
     }
 
-    /// Emitted when semantic memory is updated
     public struct SemanticUpdate has copy, drop {
         memory_id: ID,
         actor: address,
@@ -29,7 +26,6 @@ module manta::events {
         timestamp: u64,
     }
 
-    /// Emitted when a MemoryObject is destroyed
     public struct MemoryDestroyed has copy, drop {
         memory_id: ID,
         final_version: u64,
@@ -37,7 +33,6 @@ module manta::events {
 
     // ============ Capability Events ============
 
-    /// Emitted when a capability is delegated
     public struct CapabilityDelegated has copy, drop {
         cap_id: ID,
         memory_id: ID,
@@ -48,19 +43,17 @@ module manta::events {
         created_at: u64,
     }
 
-    /// Emitted when a capability is revoked
     public struct CapabilityRevoked has copy, drop {
         cap_id: ID,
         memory_id: ID,
         revoked_by: address,
     }
 
-    /// Emitted when a capability is used for a write operation
     public struct CapabilityUsed has copy, drop {
         cap_id: ID,
         memory_id: ID,
         actor: address,
-        operation: u8,  // 2 = append, 4 = update
+        operation: u8,
         timestamp: u64,
     }
 
