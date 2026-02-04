@@ -158,6 +158,26 @@ All memory objects track an `owner` address for access control:
 
 Even shared objects enforce owner-only writes. Non-owners must use capabilities.
 
+### Semantics & Expectations (Read This)
+
+The protocol enforces access control for **writes**, but **does not provide on-chain privacy**. Object state is readable via Sui RPC regardless of ownership. The `PERM_READ` capability is only required for on-chain reads via `cap_get_data`; it does not make data private off-chain.
+
+Ownership vs sharing:
+- **Owned** objects are not shared, but their contents are still publicly readable off-chain.
+- **Shared** objects are globally addressable, but writes remain owner/cap-gated.
+- **Shared objects are permanent in V1**: `destroy` only works for owned objects.
+
+Delegation & revocation:
+- Capabilities are **transferable objects**; recipients can re-transfer them.
+- `revoke` destroys the specific cap **only if you hold it**. Owners cannot revoke an arbitrary cap without first obtaining it.
+- Owners can invalidate **all** outstanding caps with `revoke_all_caps` (by bumping `cap_epoch`); old caps remain on-chain but become unusable.
+- `transfer_ownership` does **not** invalidate existing caps; new owners should call `revoke_all_caps` if they want to reset delegation state.
+
+Permanence, mutability, and versioning:
+- **Episodic** data is append-only. **Semantic** updates also append new entries; old values remain in history (last-write-wins is off-chain).
+- `version` increments on every append/update; it is not a schema version.
+- Storage is **bounded** (per-entry and total size limits); memory objects are not unboundedly permanent.
+
 ---
 
 ## API Reference
