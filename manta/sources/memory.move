@@ -219,7 +219,30 @@ module manta::memory {
         append_internal(memory, payload, ctx.sender(), clock);
     }
 
+    public fun append_owner(
+        memory: &mut MemoryObject,
+        payload: vector<u8>,
+        clock: &Clock,
+        ctx: &TxContext
+    ) {
+        assert_is_owner(memory, ctx);
+        assert!(memory.schema_type == SCHEMA_EPISODIC, EInvalidSchemaType);
+        append_internal(memory, payload, ctx.sender(), clock);
+    }
+
     entry fun update(
+        memory: &mut MemoryObject,
+        key: vector<u8>,
+        value: vector<u8>,
+        clock: &Clock,
+        ctx: &TxContext
+    ) {
+        assert_is_owner(memory, ctx);
+        assert!(memory.schema_type == SCHEMA_SEMANTIC, EInvalidSchemaType);
+        update_internal(memory, key, value, ctx.sender(), clock);
+    }
+
+    public fun update_owner(
         memory: &mut MemoryObject,
         key: vector<u8>,
         value: vector<u8>,
@@ -254,6 +277,27 @@ module manta::memory {
         append_internal(memory, payload, ctx.sender(), clock);
     }
 
+    public fun append_with_cap(
+        memory: &mut MemoryObject,
+        cap: &MemoryCap,
+        payload: vector<u8>,
+        clock: &Clock,
+        ctx: &TxContext
+    ) {
+        assert_valid_cap(cap, memory, PERM_APPEND, clock);
+        assert!(memory.schema_type == SCHEMA_EPISODIC, EInvalidSchemaType);
+
+        event::emit(CapabilityUsed {
+            cap_id: object::uid_to_inner(&cap.id),
+            memory_id: cap.memory_id,
+            actor: ctx.sender(),
+            operation: PERM_APPEND,
+            timestamp: clock.timestamp_ms(),
+        });
+
+        append_internal(memory, payload, ctx.sender(), clock);
+    }
+
     entry fun cap_update(
         memory: &mut MemoryObject,
         cap: &MemoryCap,
@@ -273,6 +317,28 @@ module manta::memory {
             timestamp: clock.timestamp_ms(),
         });
         
+        update_internal(memory, key, value, ctx.sender(), clock);
+    }
+
+    public fun update_with_cap(
+        memory: &mut MemoryObject,
+        cap: &MemoryCap,
+        key: vector<u8>,
+        value: vector<u8>,
+        clock: &Clock,
+        ctx: &TxContext
+    ) {
+        assert_valid_cap(cap, memory, PERM_UPDATE, clock);
+        assert!(memory.schema_type == SCHEMA_SEMANTIC, EInvalidSchemaType);
+
+        event::emit(CapabilityUsed {
+            cap_id: object::uid_to_inner(&cap.id),
+            memory_id: cap.memory_id,
+            actor: ctx.sender(),
+            operation: PERM_UPDATE,
+            timestamp: clock.timestamp_ms(),
+        });
+
         update_internal(memory, key, value, ctx.sender(), clock);
     }
 
@@ -564,6 +630,11 @@ module manta::memory {
         memory.schema_type
     }
 
+    public fun get_data_for_owner(memory: &MemoryObject, ctx: &TxContext): &vector<u8> {
+        assert_is_owner(memory, ctx);
+        &memory.data
+    }
+
     public fun cap_get_data(memory: &MemoryObject, cap: &MemoryCap, clock: &Clock): &vector<u8> {
         assert_valid_cap(cap, memory, PERM_READ, clock);
         &memory.data
@@ -610,6 +681,28 @@ module manta::memory {
             clock.timestamp_ms() >= *cap.expiry.borrow()
         } else {
             false
+        }
+    }
+
+    public fun cap_is_valid(
+        cap: &MemoryCap,
+        memory: &MemoryObject,
+        required_perm: u8,
+        clock: &Clock
+    ): bool {
+        if (cap.memory_id != object::uid_to_inner(&memory.id)) {
+            return false;
+        };
+        if ((cap.permissions & required_perm) != required_perm) {
+            return false;
+        };
+        if (cap.issued_epoch != memory.cap_epoch) {
+            return false;
+        };
+        if (cap.expiry.is_some()) {
+            clock.timestamp_ms() < *cap.expiry.borrow()
+        } else {
+            true
         }
     }
 }
