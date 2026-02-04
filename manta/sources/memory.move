@@ -14,6 +14,9 @@ module manta::memory {
     const ECapabilityExpired: u64 = 3;
     const EInvalidPermissions: u64 = 4;
     const ENotOwner: u64 = 5;
+    const ELengthOverflow: u64 = 6;
+    const EEntryTooLarge: u64 = 7;
+    const EMemoryTooLarge: u64 = 8;
 
     // ============ Constants ============
     
@@ -24,6 +27,11 @@ module manta::memory {
     const PERM_APPEND: u8 = 2;
     const PERM_UPDATE: u8 = 4;
 
+    // V1 hard limits to cap gas/memory growth and keep encoding bounded.
+    const MAX_U32: u64 = 0xFFFF_FFFF;
+    const MAX_ENTRY_BYTES: u64 = 65536;
+    const MAX_MEMORY_BYTES: u64 = 1048576;
+
     // ============ Core Structs ============
 
     public struct MemoryObject has key, store {
@@ -33,6 +41,8 @@ module manta::memory {
         data: vector<u8>,
         version: u64,
         created_at: u64,
+        // Epoch used to invalidate all outstanding caps without holding them.
+        cap_epoch: u64,
     }
 
     public struct MemoryCap has key, store {
@@ -41,6 +51,7 @@ module manta::memory {
         permissions: u8,
         expiry: Option<u64>,
         created_at: u64,
+        issued_epoch: u64,
     }
 
     // ============ Events ============
@@ -119,6 +130,7 @@ module manta::memory {
             data: vector::empty(),
             version: 0,
             created_at,
+            cap_epoch: 0,
         }
     }
 
@@ -142,6 +154,7 @@ module manta::memory {
             data: vector::empty(),
             version: 0,
             created_at,
+            cap_epoch: 0,
         }
     }
 
@@ -149,6 +162,7 @@ module manta::memory {
         memory_id: ID,
         permissions: u8,
         expiry: Option<u64>,
+        cap_epoch: u64,
         clock: &Clock,
         ctx: &mut TxContext
     ): MemoryCap {
@@ -160,6 +174,7 @@ module manta::memory {
             permissions,
             expiry,
             created_at: clock.timestamp_ms(),
+            issued_epoch: cap_epoch,
         }
     }
 
@@ -269,6 +284,16 @@ module manta::memory {
         actor: address,
         clock: &Clock
     ) {
+        let payload_len = payload.length() as u64;
+        // Enforce 4-byte length encoding limits before any encoding occurs.
+        assert!(payload_len <= MAX_U32, ELengthOverflow);
+        let entry_len = 8 + 32 + 4 + payload_len;
+        assert!(entry_len <= MAX_U32, ELengthOverflow);
+        let final_entry_len = 4 + entry_len;
+        assert!(final_entry_len <= MAX_ENTRY_BYTES, EEntryTooLarge);
+        let memory_len = memory.data.length() as u64;
+        assert!(memory_len + final_entry_len <= MAX_MEMORY_BYTES, EMemoryTooLarge);
+
         let timestamp = clock.timestamp_ms();
         let mut entry = vector::empty<u8>();
         
@@ -287,7 +312,7 @@ module manta::memory {
             j = j + 1;
         };
         
-        let len = payload.length() as u64;
+        let len = payload_len;
         let mut l = len;
         let mut k = 0;
         while (k < 4) {
@@ -328,10 +353,21 @@ module manta::memory {
         actor: address,
         clock: &Clock
     ) {
+        let key_len = key.length() as u64;
+        let value_len = value.length() as u64;
+        // Enforce 4-byte length encoding limits before any encoding occurs.
+        assert!(key_len <= MAX_U32, ELengthOverflow);
+        assert!(value_len <= MAX_U32, ELengthOverflow);
+        let entry_len = 4 + key_len + 4 + value_len + 8;
+        assert!(entry_len <= MAX_U32, ELengthOverflow);
+        let final_entry_len = 4 + entry_len;
+        assert!(final_entry_len <= MAX_ENTRY_BYTES, EEntryTooLarge);
+        let memory_len = memory.data.length() as u64;
+        assert!(memory_len + final_entry_len <= MAX_MEMORY_BYTES, EMemoryTooLarge);
+
         let timestamp = clock.timestamp_ms();
         let mut entry = vector::empty<u8>();
         
-        let key_len = key.length() as u64;
         let mut kl = key_len;
         let mut i = 0;
         while (i < 4) {
@@ -342,7 +378,6 @@ module manta::memory {
         
         entry.append(key);
         
-        let value_len = value.length() as u64;
         let mut vl = value_len;
         let mut j = 0;
         while (j < 4) {
@@ -399,7 +434,7 @@ module manta::memory {
         assert_is_owner(memory, ctx);
         
         let memory_id = object::uid_to_inner(&memory.id);
-        let cap = new_cap(memory_id, permissions, expiry, clock, ctx);
+        let cap = new_cap(memory_id, permissions, expiry, memory.cap_epoch, clock, ctx);
         let cap_id = object::uid_to_inner(&cap.id);
         
         event::emit(CapabilityDelegated {
@@ -458,7 +493,7 @@ module manta::memory {
     // ============ Revoke & Destroy ============
 
     entry fun revoke(cap: MemoryCap, ctx: &TxContext) {
-        let MemoryCap { id, memory_id, permissions: _, expiry: _, created_at: _ } = cap;
+        let MemoryCap { id, memory_id, permissions: _, expiry: _, created_at: _, issued_epoch: _ } = cap;
         
         event::emit(CapabilityRevoked {
             cap_id: object::uid_to_inner(&id),
@@ -469,10 +504,17 @@ module manta::memory {
         object::delete(id);
     }
 
+    /// Owner-driven invalidation of all outstanding caps without holding them.
+    entry fun revoke_all_caps(memory: &mut MemoryObject, ctx: &TxContext) {
+        assert_is_owner(memory, ctx);
+        memory.cap_epoch = memory.cap_epoch + 1;
+    }
+
+    // Note: Shared MemoryObjects are intentionally permanent in V1.
     entry fun destroy(memory: MemoryObject, ctx: &TxContext) {
         assert!(ctx.sender() == memory.owner, ENotOwner);
         
-        let MemoryObject { id, owner: _, schema_type: _, data: _, version, created_at: _ } = memory;
+        let MemoryObject { id, owner: _, schema_type: _, data: _, version, created_at: _, cap_epoch: _ } = memory;
         
         event::emit(MemoryDestroyed {
             memory_id: object::uid_to_inner(&id),
@@ -496,6 +538,7 @@ module manta::memory {
     fun assert_valid_cap(cap: &MemoryCap, memory: &MemoryObject, required_perm: u8, clock: &Clock) {
         assert!(cap.memory_id == object::uid_to_inner(&memory.id), EWrongMemory);
         assert!((cap.permissions & required_perm) == required_perm, EPermissionDenied);
+        assert!(cap.issued_epoch == memory.cap_epoch, EPermissionDenied);
         
         if (cap.expiry.is_some()) {
             let expiry = *cap.expiry.borrow();
@@ -517,7 +560,8 @@ module manta::memory {
         memory.schema_type
     }
 
-    public fun get_data(memory: &MemoryObject): &vector<u8> {
+    public fun cap_get_data(memory: &MemoryObject, cap: &MemoryCap, clock: &Clock): &vector<u8> {
+        assert_valid_cap(cap, memory, PERM_READ, clock);
         &memory.data
     }
 
