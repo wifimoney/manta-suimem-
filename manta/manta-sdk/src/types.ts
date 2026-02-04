@@ -10,6 +10,7 @@ export interface MemoryObjectRaw {
   data: number[];
   version: string;
   created_at: string;
+  cap_epoch: string;
 }
 
 /**
@@ -22,6 +23,7 @@ export interface MemoryObject {
   data: Uint8Array;
   version: bigint;
   createdAt: bigint;
+  capEpoch: bigint;
 }
 
 /**
@@ -33,6 +35,7 @@ export interface MemoryCapRaw {
   permissions: number;
   expiry: { vec: string[] } | null;
   created_at: string;
+  issued_epoch: string;
 }
 
 /**
@@ -44,6 +47,7 @@ export interface MemoryCap {
   permissions: PermissionValue;
   expiry: bigint | null;
   createdAt: bigint;
+  issuedEpoch: bigint;
 }
 
 /**

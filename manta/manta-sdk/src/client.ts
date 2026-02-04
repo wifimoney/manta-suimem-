@@ -1,4 +1,10 @@
-import { SuiClient, SuiTransactionBlockResponse } from '@mysten/sui/client';
+import {
+  SuiJsonRpcClient,
+  SuiTransactionBlockResponse,
+  SuiObjectResponse,
+  SuiEvent,
+  getJsonRpcFullnodeUrl,
+} from '@mysten/sui/jsonRpc';
 import { Transaction } from '@mysten/sui/transactions';
 import {
   PACKAGE_IDS,
@@ -28,36 +34,26 @@ import {
 
 export interface MantaClientConfig {
   network: Network;
-  client?: SuiClient;
+  client?: SuiJsonRpcClient;
 }
 
 export class MantaClient {
   readonly network: Network;
   readonly packageId: string;
-  readonly client: SuiClient;
+  readonly client: SuiJsonRpcClient;
 
   constructor(config: MantaClientConfig) {
     this.network = config.network;
     this.packageId = PACKAGE_IDS[config.network];
-    
+
     if (!this.packageId) {
       throw new Error(`Manta not deployed on ${config.network}`);
     }
 
-    this.client = config.client ?? new SuiClient({
-      url: this.getRpcUrl(),
+    this.client = config.client ?? new SuiJsonRpcClient({
+      network: this.network,
+      url: getJsonRpcFullnodeUrl(this.network),
     });
-  }
-
-  private getRpcUrl(): string {
-    switch (this.network) {
-      case 'mainnet':
-        return 'https://fullnode.mainnet.sui.io';
-      case 'testnet':
-        return 'https://fullnode.testnet.sui.io';
-      case 'devnet':
-        return 'https://fullnode.devnet.sui.io';
-    }
   }
 
   // ============ Create Functions ============
@@ -103,7 +99,7 @@ export class MantaClient {
   append(memoryId: string, payload: Uint8Array | string): Transaction {
     const tx = new Transaction();
     const payloadBytes = typeof payload === 'string' ? stringToBytes(payload) : payload;
-    
+
     tx.moveCall({
       target: `${this.packageId}::${MODULES.MEMORY}::${FUNCTIONS.APPEND}`,
       arguments: [
@@ -119,7 +115,7 @@ export class MantaClient {
     const tx = new Transaction();
     const keyBytes = typeof key === 'string' ? stringToBytes(key) : key;
     const valueBytes = typeof value === 'string' ? stringToBytes(value) : value;
-    
+
     tx.moveCall({
       target: `${this.packageId}::${MODULES.MEMORY}::${FUNCTIONS.UPDATE}`,
       arguments: [
@@ -135,7 +131,7 @@ export class MantaClient {
   capAppend(memoryId: string, capId: string, payload: Uint8Array | string): Transaction {
     const tx = new Transaction();
     const payloadBytes = typeof payload === 'string' ? stringToBytes(payload) : payload;
-    
+
     tx.moveCall({
       target: `${this.packageId}::${MODULES.MEMORY}::${FUNCTIONS.CAP_APPEND}`,
       arguments: [
@@ -157,7 +153,7 @@ export class MantaClient {
     const tx = new Transaction();
     const keyBytes = typeof key === 'string' ? stringToBytes(key) : key;
     const valueBytes = typeof value === 'string' ? stringToBytes(value) : value;
-    
+
     tx.moveCall({
       target: `${this.packageId}::${MODULES.MEMORY}::${FUNCTIONS.CAP_UPDATE}`,
       arguments: [
@@ -180,7 +176,7 @@ export class MantaClient {
     expiryMs?: bigint
   ): Transaction {
     const tx = new Transaction();
-    
+
     tx.moveCall({
       target: `${this.packageId}::${MODULES.MEMORY}::${FUNCTIONS.DELEGATE}`,
       arguments: [
@@ -196,7 +192,7 @@ export class MantaClient {
 
   delegateRead(memoryId: string, recipient: string, expiryMs?: bigint): Transaction {
     const tx = new Transaction();
-    
+
     tx.moveCall({
       target: `${this.packageId}::${MODULES.MEMORY}::${FUNCTIONS.DELEGATE_READ}`,
       arguments: [
@@ -211,7 +207,7 @@ export class MantaClient {
 
   delegateAppend(memoryId: string, recipient: string, expiryMs?: bigint): Transaction {
     const tx = new Transaction();
-    
+
     tx.moveCall({
       target: `${this.packageId}::${MODULES.MEMORY}::${FUNCTIONS.DELEGATE_APPEND}`,
       arguments: [
@@ -226,7 +222,7 @@ export class MantaClient {
 
   delegateFull(memoryId: string, recipient: string, expiryMs?: bigint): Transaction {
     const tx = new Transaction();
-    
+
     tx.moveCall({
       target: `${this.packageId}::${MODULES.MEMORY}::${FUNCTIONS.DELEGATE_FULL}`,
       arguments: [
@@ -243,7 +239,7 @@ export class MantaClient {
 
   transferOwnership(memoryId: string, newOwner: string): Transaction {
     const tx = new Transaction();
-    
+
     tx.moveCall({
       target: `${this.packageId}::${MODULES.MEMORY}::transfer_ownership`,
       arguments: [
@@ -258,7 +254,7 @@ export class MantaClient {
 
   revoke(capId: string): Transaction {
     const tx = new Transaction();
-    
+
     tx.moveCall({
       target: `${this.packageId}::${MODULES.MEMORY}::${FUNCTIONS.REVOKE}`,
       arguments: [tx.object(capId)],
@@ -266,9 +262,19 @@ export class MantaClient {
     return tx;
   }
 
+  revokeAllCaps(memoryId: string): Transaction {
+    const tx = new Transaction();
+
+    tx.moveCall({
+      target: `${this.packageId}::${MODULES.MEMORY}::${FUNCTIONS.REVOKE_ALL_CAPS}`,
+      arguments: [tx.object(memoryId)],
+    });
+    return tx;
+  }
+
   destroy(memoryId: string): Transaction {
     const tx = new Transaction();
-    
+
     tx.moveCall({
       target: `${this.packageId}::${MODULES.MEMORY}::${FUNCTIONS.DESTROY}`,
       arguments: [tx.object(memoryId)],
@@ -289,7 +295,7 @@ export class MantaClient {
     }
 
     const fields = response.data.content.fields as unknown as MemoryObjectRaw;
-    
+
     return {
       id: fields.id.id,
       owner: fields.owner,
@@ -297,6 +303,7 @@ export class MantaClient {
       data: new Uint8Array(fields.data),
       version: BigInt(fields.version),
       createdAt: BigInt(fields.created_at),
+      capEpoch: BigInt(fields.cap_epoch),
     };
   }
 
@@ -311,13 +318,14 @@ export class MantaClient {
     }
 
     const fields = response.data.content.fields as unknown as MemoryCapRaw;
-    
+
     return {
       id: fields.id.id,
       memoryId: fields.memory_id,
       permissions: fields.permissions as PermissionValue,
       expiry: fields.expiry?.vec?.[0] ? BigInt(fields.expiry.vec[0]) : null,
       createdAt: BigInt(fields.created_at),
+      issuedEpoch: BigInt(fields.issued_epoch),
     };
   }
 
@@ -331,8 +339,8 @@ export class MantaClient {
     });
 
     return objects.data
-      .filter(obj => obj.data?.content?.dataType === 'moveObject')
-      .map(obj => {
+      .filter((obj: SuiObjectResponse) => obj.data?.content?.dataType === 'moveObject')
+      .map((obj: SuiObjectResponse) => {
         const fields = (obj.data!.content as any).fields as MemoryObjectRaw;
         return {
           id: fields.id.id,
@@ -341,6 +349,7 @@ export class MantaClient {
           data: new Uint8Array(fields.data),
           version: BigInt(fields.version),
           createdAt: BigInt(fields.created_at),
+          capEpoch: BigInt(fields.cap_epoch),
         };
       });
   }
@@ -355,8 +364,8 @@ export class MantaClient {
     });
 
     return objects.data
-      .filter(obj => obj.data?.content?.dataType === 'moveObject')
-      .map(obj => {
+      .filter((obj: SuiObjectResponse) => obj.data?.content?.dataType === 'moveObject')
+      .map((obj: SuiObjectResponse) => {
         const fields = (obj.data!.content as any).fields as MemoryCapRaw;
         return {
           id: fields.id.id,
@@ -364,6 +373,7 @@ export class MantaClient {
           permissions: fields.permissions as PermissionValue,
           expiry: fields.expiry?.vec?.[0] ? BigInt(fields.expiry.vec[0]) : null,
           createdAt: BigInt(fields.created_at),
+          issuedEpoch: BigInt(fields.issued_epoch),
         };
       });
   }
@@ -395,8 +405,8 @@ export class MantaClient {
     if (!response.events) return [];
 
     return response.events
-      .filter(event => event.type.startsWith(this.packageId))
-      .map(event => {
+      .filter((event: SuiEvent) => event.type.startsWith(this.packageId))
+      .map((event: SuiEvent) => {
         const eventType = event.type.split('::').pop()!;
         return {
           type: eventType,

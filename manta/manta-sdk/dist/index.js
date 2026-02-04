@@ -27,6 +27,7 @@ __export(index_exports, {
   PACKAGE_IDS: () => PACKAGE_IDS,
   Permissions: () => Permissions,
   SchemaType: () => SchemaType,
+  SuiJsonRpcClient: () => import_jsonRpc2.SuiJsonRpcClient,
   buildKeyValueMap: () => buildKeyValueMap,
   bytesToHex: () => bytesToHex,
   bytesToString: () => bytesToString,
@@ -39,7 +40,7 @@ __export(index_exports, {
 module.exports = __toCommonJS(index_exports);
 
 // src/client.ts
-var import_client = require("@mysten/sui/client");
+var import_jsonRpc = require("@mysten/sui/jsonRpc");
 var import_transactions = require("@mysten/sui/transactions");
 
 // src/constants.ts
@@ -79,6 +80,7 @@ var FUNCTIONS = {
   DELEGATE_UPDATE: "delegate_update",
   DELEGATE_FULL: "delegate_full",
   REVOKE: "revoke",
+  REVOKE_ALL_CAPS: "revoke_all_caps",
   DESTROY: "destroy",
   TRANSFER_OWNERSHIP: "transfer_ownership"
 };
@@ -236,19 +238,10 @@ var MantaClient = class {
     if (!this.packageId) {
       throw new Error(`Manta not deployed on ${config.network}`);
     }
-    this.client = config.client ?? new import_client.SuiClient({
-      url: this.getRpcUrl()
+    this.client = config.client ?? new import_jsonRpc.SuiJsonRpcClient({
+      network: this.network,
+      url: (0, import_jsonRpc.getJsonRpcFullnodeUrl)(this.network)
     });
-  }
-  getRpcUrl() {
-    switch (this.network) {
-      case "mainnet":
-        return "https://fullnode.mainnet.sui.io";
-      case "testnet":
-        return "https://fullnode.testnet.sui.io";
-      case "devnet":
-        return "https://fullnode.devnet.sui.io";
-    }
   }
   // ============ Create Functions ============
   createEpisodicMemory() {
@@ -417,6 +410,14 @@ var MantaClient = class {
     });
     return tx;
   }
+  revokeAllCaps(memoryId) {
+    const tx = new import_transactions.Transaction();
+    tx.moveCall({
+      target: `${this.packageId}::${MODULES.MEMORY}::${FUNCTIONS.REVOKE_ALL_CAPS}`,
+      arguments: [tx.object(memoryId)]
+    });
+    return tx;
+  }
   destroy(memoryId) {
     const tx = new import_transactions.Transaction();
     tx.moveCall({
@@ -441,7 +442,8 @@ var MantaClient = class {
       schemaType: fields.schema_type,
       data: new Uint8Array(fields.data),
       version: BigInt(fields.version),
-      createdAt: BigInt(fields.created_at)
+      createdAt: BigInt(fields.created_at),
+      capEpoch: BigInt(fields.cap_epoch)
     };
   }
   async getCap(objectId) {
@@ -458,7 +460,8 @@ var MantaClient = class {
       memoryId: fields.memory_id,
       permissions: fields.permissions,
       expiry: fields.expiry?.vec?.[0] ? BigInt(fields.expiry.vec[0]) : null,
-      createdAt: BigInt(fields.created_at)
+      createdAt: BigInt(fields.created_at),
+      issuedEpoch: BigInt(fields.issued_epoch)
     };
   }
   async getOwnedMemories(owner) {
@@ -477,7 +480,8 @@ var MantaClient = class {
         schemaType: fields.schema_type,
         data: new Uint8Array(fields.data),
         version: BigInt(fields.version),
-        createdAt: BigInt(fields.created_at)
+        createdAt: BigInt(fields.created_at),
+        capEpoch: BigInt(fields.cap_epoch)
       };
     });
   }
@@ -496,7 +500,8 @@ var MantaClient = class {
         memoryId: fields.memory_id,
         permissions: fields.permissions,
         expiry: fields.expiry?.vec?.[0] ? BigInt(fields.expiry.vec[0]) : null,
-        createdAt: BigInt(fields.created_at)
+        createdAt: BigInt(fields.created_at),
+        issuedEpoch: BigInt(fields.issued_epoch)
       };
     });
   }
@@ -541,6 +546,9 @@ var MantaClient = class {
     return memory.owner === address;
   }
 };
+
+// src/index.ts
+var import_jsonRpc2 = require("@mysten/sui/jsonRpc");
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
   CLOCK_ID,
@@ -550,6 +558,7 @@ var MantaClient = class {
   PACKAGE_IDS,
   Permissions,
   SchemaType,
+  SuiJsonRpcClient,
   buildKeyValueMap,
   bytesToHex,
   bytesToString,

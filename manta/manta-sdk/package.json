@@ -1,6 +1,6 @@
 {
   "name": "@manta/sdk",
-  "version": "1.2.0",
+  "version": "2.0.0",
   "description": "TypeScript SDK for Manta - Sui On-Chain Memory Primitive",
   "main": "dist/index.js",
   "module": "dist/index.mjs",
@@ -26,7 +26,7 @@
     "url": "https://github.com/elibelilty/manta"
   },
   "dependencies": {
-    "@mysten/sui": "^1.0.0"
+    "@mysten/sui": "^2.2.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
@@ -35,6 +35,6 @@
     "vitest": "^1.0.0"
   },
   "peerDependencies": {
-    "@mysten/sui": "^1.0.0"
+    "@mysten/sui": "^2.0.0"
   }
 }

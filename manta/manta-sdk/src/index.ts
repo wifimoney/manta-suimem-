@@ -1,6 +1,9 @@
 // Main client
 export { MantaClient, type MantaClientConfig } from './client';
 
+// Re-export Sui client for convenience
+export { SuiJsonRpcClient } from '@mysten/sui/jsonRpc';
+
 // Constants
 export {
   PACKAGE_IDS,

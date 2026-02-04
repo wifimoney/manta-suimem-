@@ -39,6 +39,7 @@ export const FUNCTIONS = {
   DELEGATE_UPDATE: 'delegate_update',
   DELEGATE_FULL: 'delegate_full',
   REVOKE: 'revoke',
+  REVOKE_ALL_CAPS: 'revoke_all_caps',
   DESTROY: 'destroy',
   TRANSFER_OWNERSHIP: 'transfer_ownership',
 } as const;

@@ -1,5 +1,8 @@
 // src/client.ts
-import { SuiClient } from "@mysten/sui/client";
+import {
+  SuiJsonRpcClient,
+  getJsonRpcFullnodeUrl
+} from "@mysten/sui/jsonRpc";
 import { Transaction } from "@mysten/sui/transactions";
 
 // src/constants.ts
@@ -39,6 +42,7 @@ var FUNCTIONS = {
   DELEGATE_UPDATE: "delegate_update",
   DELEGATE_FULL: "delegate_full",
   REVOKE: "revoke",
+  REVOKE_ALL_CAPS: "revoke_all_caps",
   DESTROY: "destroy",
   TRANSFER_OWNERSHIP: "transfer_ownership"
 };
@@ -196,19 +200,10 @@ var MantaClient = class {
     if (!this.packageId) {
       throw new Error(`Manta not deployed on ${config.network}`);
     }
-    this.client = config.client ?? new SuiClient({
-      url: this.getRpcUrl()
+    this.client = config.client ?? new SuiJsonRpcClient({
+      network: this.network,
+      url: getJsonRpcFullnodeUrl(this.network)
     });
-  }
-  getRpcUrl() {
-    switch (this.network) {
-      case "mainnet":
-        return "https://fullnode.mainnet.sui.io";
-      case "testnet":
-        return "https://fullnode.testnet.sui.io";
-      case "devnet":
-        return "https://fullnode.devnet.sui.io";
-    }
   }
   // ============ Create Functions ============
   createEpisodicMemory() {
@@ -377,6 +372,14 @@ var MantaClient = class {
     });
     return tx;
   }
+  revokeAllCaps(memoryId) {
+    const tx = new Transaction();
+    tx.moveCall({
+      target: `${this.packageId}::${MODULES.MEMORY}::${FUNCTIONS.REVOKE_ALL_CAPS}`,
+      arguments: [tx.object(memoryId)]
+    });
+    return tx;
+  }
   destroy(memoryId) {
     const tx = new Transaction();
     tx.moveCall({
@@ -401,7 +404,8 @@ var MantaClient = class {
       schemaType: fields.schema_type,
       data: new Uint8Array(fields.data),
       version: BigInt(fields.version),
-      createdAt: BigInt(fields.created_at)
+      createdAt: BigInt(fields.created_at),
+      capEpoch: BigInt(fields.cap_epoch)
     };
   }
   async getCap(objectId) {
@@ -418,7 +422,8 @@ var MantaClient = class {
       memoryId: fields.memory_id,
       permissions: fields.permissions,
       expiry: fields.expiry?.vec?.[0] ? BigInt(fields.expiry.vec[0]) : null,
-      createdAt: BigInt(fields.created_at)
+      createdAt: BigInt(fields.created_at),
+      issuedEpoch: BigInt(fields.issued_epoch)
     };
   }
   async getOwnedMemories(owner) {
@@ -437,7 +442,8 @@ var MantaClient = class {
         schemaType: fields.schema_type,
         data: new Uint8Array(fields.data),
         version: BigInt(fields.version),
-        createdAt: BigInt(fields.created_at)
+        createdAt: BigInt(fields.created_at),
+        capEpoch: BigInt(fields.cap_epoch)
       };
     });
   }
@@ -456,7 +462,8 @@ var MantaClient = class {
         memoryId: fields.memory_id,
         permissions: fields.permissions,
         expiry: fields.expiry?.vec?.[0] ? BigInt(fields.expiry.vec[0]) : null,
-        createdAt: BigInt(fields.created_at)
+        createdAt: BigInt(fields.created_at),
+        issuedEpoch: BigInt(fields.issued_epoch)
       };
     });
   }
@@ -501,6 +508,9 @@ var MantaClient = class {
     return memory.owner === address;
   }
 };
+
+// src/index.ts
+import { SuiJsonRpcClient as SuiJsonRpcClient2 } from "@mysten/sui/jsonRpc";
 export {
   CLOCK_ID,
   FUNCTIONS,
@@ -509,6 +519,7 @@ export {
   PACKAGE_IDS,
   Permissions,
   SchemaType,
+  SuiJsonRpcClient2 as SuiJsonRpcClient,
   buildKeyValueMap,
   bytesToHex,
   bytesToString,

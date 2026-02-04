@@ -1,4 +1,5 @@
-import { SuiClient, SuiTransactionBlockResponse } from '@mysten/sui/client';
+import { SuiJsonRpcClient, SuiTransactionBlockResponse } from '@mysten/sui/jsonRpc';
+export { SuiJsonRpcClient } from '@mysten/sui/jsonRpc';
 import { Transaction } from '@mysten/sui/transactions';
 
 declare const PACKAGE_IDS: {
@@ -37,6 +38,7 @@ declare const FUNCTIONS: {
     readonly DELEGATE_UPDATE: "delegate_update";
     readonly DELEGATE_FULL: "delegate_full";
     readonly REVOKE: "revoke";
+    readonly REVOKE_ALL_CAPS: "revoke_all_caps";
     readonly DESTROY: "destroy";
     readonly TRANSFER_OWNERSHIP: "transfer_ownership";
 };
@@ -54,6 +56,7 @@ interface MemoryObject {
     data: Uint8Array;
     version: bigint;
     createdAt: bigint;
+    capEpoch: bigint;
 }
 /**
  * Parsed MemoryCap
@@ -64,6 +67,7 @@ interface MemoryCap {
     permissions: PermissionValue;
     expiry: bigint | null;
     createdAt: bigint;
+    issuedEpoch: bigint;
 }
 /**
  * Episodic entry (decoded from BCS)
@@ -156,14 +160,13 @@ type MantaEvent = {
 
 interface MantaClientConfig {
     network: Network;
-    client?: SuiClient;
+    client?: SuiJsonRpcClient;
 }
 declare class MantaClient {
     readonly network: Network;
     readonly packageId: string;
-    readonly client: SuiClient;
+    readonly client: SuiJsonRpcClient;
     constructor(config: MantaClientConfig);
-    private getRpcUrl;
     createEpisodicMemory(): Transaction;
     createSemanticMemory(): Transaction;
     createSharedEpisodicMemory(): Transaction;
@@ -178,6 +181,7 @@ declare class MantaClient {
     delegateFull(memoryId: string, recipient: string, expiryMs?: bigint): Transaction;
     transferOwnership(memoryId: string, newOwner: string): Transaction;
     revoke(capId: string): Transaction;
+    revokeAllCaps(memoryId: string): Transaction;
     destroy(memoryId: string): Transaction;
     getMemory(objectId: string): Promise<MemoryObject | null>;
     getCap(objectId: string): Promise<MemoryCap | null>;
