@@ -467,6 +467,7 @@ module manta::memory {
         clock: &Clock,
         ctx: &mut TxContext
     ) {
+        // V1 design: write access always implies read access.
         delegate(memory, recipient, PERM_READ | PERM_APPEND, expiry, clock, ctx);
     }
 
@@ -477,6 +478,7 @@ module manta::memory {
         clock: &Clock,
         ctx: &mut TxContext
     ) {
+        // V1 design: write access always implies read access.
         delegate(memory, recipient, PERM_READ | PERM_UPDATE, expiry, clock, ctx);
     }
 
@@ -531,6 +533,8 @@ module manta::memory {
     ) {
         assert_is_owner(memory, ctx);
         memory.owner = new_owner;
+        // Ownership changes invalidate all outstanding caps by default.
+        memory.cap_epoch = memory.cap_epoch + 1;
     }
 
     // ============ Capability Validation ============
