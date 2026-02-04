@@ -171,7 +171,8 @@ Delegation & revocation:
 - Capabilities are **transferable objects**; recipients can re-transfer them.
 - `revoke` destroys the specific cap **only if you hold it**. Owners cannot revoke an arbitrary cap without first obtaining it.
 - Owners can invalidate **all** outstanding caps with `revoke_all_caps` (by bumping `cap_epoch`); old caps remain on-chain but become unusable.
-- `transfer_ownership` does **not** invalidate existing caps; new owners should call `revoke_all_caps` if they want to reset delegation state.
+- `transfer_ownership` **does** invalidate existing caps by bumping `cap_epoch`; prior caps become unusable immediately.
+- `delegate` can mint any nonzero permission bitmask (including write-only caps that omit READ). The convenience helpers (`delegate_append`, `delegate_update`) always include READ.
 
 Permanence, mutability, and versioning:
 - **Episodic** data is append-only. **Semantic** updates also append new entries; old values remain in history (last-write-wins is off-chain).
