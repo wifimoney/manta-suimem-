@@ -1,5 +1,5 @@
 {
-  "name": "@manta/sdk",
+  "name": "manta-sui-sdk",
   "version": "2.0.0",
   "description": "TypeScript SDK for Manta - Sui On-Chain Memory Primitive",
   "main": "dist/index.js",
@@ -23,7 +23,22 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/elibelilty/manta"
+    "url": "https://github.com/wifimoney/manta-suimem-"
+  },
+  "homepage": "https://github.com/wifimoney/manta-suimem-#readme",
+  "bugs": {
+    "url": "https://github.com/wifimoney/manta-suimem-/issues"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
   },
   "dependencies": {
     "@mysten/sui": "^2.2.0"

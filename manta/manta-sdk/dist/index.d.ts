@@ -3,7 +3,7 @@ export { SuiJsonRpcClient } from '@mysten/sui/jsonRpc';
 import { Transaction } from '@mysten/sui/transactions';
 
 declare const PACKAGE_IDS: {
-    readonly mainnet: "";
+    readonly mainnet: "0x212b3966f9235171499e0e6c1f276fb6d815ff366e29b95a270a9288e5fff508";
     readonly testnet: "0x61f59d91f6ac0c1a321a2682d7d70cab4bc0425ed1d8b417d2494f0bbc0d6be0";
     readonly devnet: "0x38c55662dfe0ff2cd0e346da0bf20916afa26bb65fe86239a687b47826643e0d";
 };
