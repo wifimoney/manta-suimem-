@@ -35,7 +35,7 @@ Manta answers: **"Where does long-term state live on Sui, and who controls it?"*
 - **Secure Access Control** - Strict ownership checks; capabilities for delegated access
 - **Two Memory Schemas** - Episodic (append-only logs) and Semantic (key-value stores)
 - **Capability-based Delegation** - Time-bounded, permission-scoped access tokens
-- **Shared Object Support** - Safe global memory with owner-controlled writes
+- **Shared Object Support** - Safe global memory with owner-controlled writes (reads still require a READ capability when calling on-chain APIs)
 - **Minimal On-chain Logic** - Data interpretation happens off-chain (BCS encoded)
 
 ---
@@ -83,7 +83,7 @@ sui client call \
   --args 0x6 \
   --gas-budget 10000000
 
-# Create shared semantic memory (globally readable, owner/cap writable)
+# Create shared semantic memory (shared object; on-chain reads still require a READ capability)
 sui client call \
   --package 0x61f59d91f6ac0c1a321a2682d7d70cab4bc0425ed1d8b417d2494f0bbc0d6be0 \
   --module memory \
@@ -156,7 +156,11 @@ All memory objects track an `owner` address for access control:
 | **Destroy** | Owner only |
 | **Transfer Ownership** | Owner only |
 
-Even shared objects enforce owner-only writes. Non-owners must use capabilities.
+Even shared objects enforce owner-only writes. Non-owners must use capabilities for writes and for on-chain reads.
+
+### Read Semantics (On-Chain)
+
+The only on-chain read API is `cap_get_data`, which requires a `MemoryCap` with `READ` permission. Shared objects do not bypass this check; “shared” affects ownership semantics, not read access.
 
 ### Semantics & Expectations (Read This)
 
@@ -237,6 +241,44 @@ public struct MemoryCap has key, store {
 | `CapabilityUsed` | Capability used for write |
 | `CapabilityRevoked` | Capability destroyed |
 | `MemoryDestroyed` | Memory object deleted |
+
+---
+
+## Data Encoding (On-Chain)
+
+Memory entries are stored as raw bytes in `MemoryObject.data` using custom, length-prefixed layouts (not a single BCS struct). Off-chain consumers should decode accordingly.
+
+### Episodic Entry Layout
+
+```
+entry_len: u32 (little-endian)
+timestamp_ms: u64 (little-endian)
+actor: address (32 bytes)
+payload_len: u32 (little-endian)
+payload: [u8; payload_len]
+```
+
+### Semantic Entry Layout
+
+```
+entry_len: u32 (little-endian)
+key_len: u32 (little-endian)
+key: [u8; key_len]
+value_len: u32 (little-endian)
+value: [u8; value_len]
+timestamp_ms: u64 (little-endian)
+```
+
+### Size Limits
+
+Writes are rejected if any single entry exceeds 64 KiB or if total stored data exceeds 1 MiB. Payloads are also capped by 32-bit length encoding.
+
+---
+
+## Capability Notes
+
+* `permissions` is a bitmask; ensure required bits are set (e.g., `APPEND` without `READ` permits writes but not on-chain reads).
+* Any cap holder may call `revoke` to destroy that capability (not just the owner).
 
 ---
 
