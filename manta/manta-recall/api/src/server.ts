@@ -3,13 +3,16 @@ import { recall } from "./recall";
 import { processEntry } from "../../indexer/src/pipeline";
 
 const db = new Db(
-    process.env.DATABASE_URL || "postgres://localhost:5432/manta",
+    process.env.DATABASE_URL || "postgres://manta:manta_dev_password@localhost:5432/manta_recall",
     process.env.NETWORK || "testnet",
 );
-await db.connect();
+
+const port = Number(process.env.PORT) || 3000;
+console.log(`[api] Starting server on port ${port}...`);
 
 Bun.serve({
-    port: Number(process.env.PORT) || 3000,
+    port,
+
     async fetch(req: Request) {
         const url = new URL(req.url);
 
