@@ -1,0 +1,19 @@
+# Environment
+.env
+
+# Rust
+target/
+
+# Python (Phase 2+)
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Docker
+pgdata/
+
+# IDE
+.idea/
+.vscode/
+*.swp

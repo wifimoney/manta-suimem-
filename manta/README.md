@@ -303,9 +303,9 @@ Please report security issues privately. Do not open public issues.
 - [x] Security audit & access control hardening (V1.3)
 - [x] TypeScript SDK with bounds checking
 - [x] Testnet deployment
-- [ ] Devnet V1.3 deployment
-- [ ] External security audit
-- [ ] Mainnet deployment
+- [x] Devnet V1.3 deployment
+- [x] External security audit
+- [x] Mainnet deployment
 
 ---
 
