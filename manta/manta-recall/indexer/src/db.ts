@@ -1,5 +1,4 @@
 import pg from 'pg';
-
 const { Pool } = pg;
 
 export class Db {
@@ -12,7 +11,6 @@ export class Db {
   }
 
   async connect(): Promise<void> {
-    // Test the connection
     const client = await this.pool.connect();
     client.release();
     console.log('[db] Connected to Postgres');
@@ -31,11 +29,9 @@ export class Db {
       'SELECT last_tx_digest, last_event_seq FROM sync_state WHERE network = $1',
       [this.network],
     );
-
     if (res.rows.length === 0) {
       return { txDigest: null, eventSeq: '0' };
     }
-
     return {
       txDigest: res.rows[0].last_tx_digest,
       eventSeq: String(res.rows[0].last_event_seq),
@@ -53,7 +49,7 @@ export class Db {
   }
 
   // ============================================================
-  // Raw event storage (replay / debugging)
+  // Raw event storage
   // ============================================================
 
   async storeRawEvent(
@@ -91,10 +87,7 @@ export class Db {
     );
   }
 
-  async updateMemoryVersion(
-    objectId: string,
-    version: number,
-  ): Promise<void> {
+  async updateMemoryVersion(objectId: string, version: number): Promise<void> {
     await this.pool.query(
       'UPDATE memories SET version = GREATEST(version, $2), synced_at = NOW() WHERE object_id = $1',
       [objectId, version],
@@ -108,10 +101,7 @@ export class Db {
     );
   }
 
-  async transferMemoryOwner(
-    objectId: string,
-    newOwner: string,
-  ): Promise<void> {
+  async transferMemoryOwner(objectId: string, newOwner: string): Promise<void> {
     await this.pool.query(
       'UPDATE memories SET owner = $2, synced_at = NOW() WHERE object_id = $1',
       [objectId, newOwner],
@@ -154,7 +144,6 @@ export class Db {
         params.version,
       ],
     );
-
     return res.rows[0].id;
   }
 
@@ -203,7 +192,7 @@ export class Db {
         await client.query(
           `INSERT INTO memory_chunks (entry_id, memory_id, chunk_index, chunk_text, token_count, embedding, model_name)
            VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-          [entryId, memoryId, chunk.index, chunk.text, chunk.tokens, vectorStr, 'nomic-embed-text-v1.5'],
+          [entryId, memoryId, chunk.index, chunk.text, chunk.tokens, vectorStr, vectorStr ? 'nomic-embed-text-v1.5' : null],
         );
       }
       await client.query('COMMIT');
@@ -213,5 +202,60 @@ export class Db {
     } finally {
       client.release();
     }
+  }
+
+  // ============================================================
+  // Search operations (Phase 3)
+  // ============================================================
+
+  async searchChunks(
+    vectorStr: string,
+    limit: number,
+    memoryId?: string,
+    owner?: string,
+  ) {
+    const params: any[] = [vectorStr, limit];
+    let where = "WHERE mc.embedding IS NOT NULL AND m.is_deleted = FALSE";
+    if (memoryId) {
+      params.push(memoryId);
+      where += ` AND mc.memory_id = $${params.length}`;
+    }
+    if (owner) {
+      params.push(owner);
+      where += ` AND m.owner = $${params.length}`;
+    }
+    const res = await this.pool.query(
+      `SELECT mc.chunk_text, mc.chunk_index, mc.entry_id,
+              1 - (mc.embedding <=> $1::vector) AS score,
+              mc.memory_id, m.owner, m.schema_type, e.tx_digest
+       FROM memory_chunks mc
+       JOIN memories m ON m.object_id = mc.memory_id
+       JOIN memory_entries e ON e.id = mc.entry_id
+       ${where}
+       ORDER BY mc.embedding <=> $1::vector
+       LIMIT $2`,
+      params,
+    );
+    return res.rows;
+  }
+
+  // ============================================================
+  // Full Memory lookup (Phase 3)
+  // ============================================================
+
+  async getMemoryWithEntries(objectId: string) {
+    const mem = await this.pool.query(
+      'SELECT object_id, owner, schema_type, version, created_tx, is_deleted FROM memories WHERE object_id = $1',
+      [objectId],
+    );
+    if (mem.rows.length === 0) return null;
+
+    const entries = await this.pool.query(
+      `SELECT entry_index, actor, payload_text, key, tx_digest, epoch, timestamp_ms, version
+       FROM memory_entries WHERE memory_id = $1 ORDER BY entry_index ASC`,
+      [objectId],
+    );
+
+    return { ...mem.rows[0], entries: entries.rows };
   }
 }
