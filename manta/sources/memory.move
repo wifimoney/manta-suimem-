@@ -560,6 +560,9 @@ module manta::memory {
 
     // ============ Revoke & Destroy ============
 
+    /// Destroys a capability.
+    /// Note: This is NOT owner-gated. Anyone holding the cap can destroy it.
+    /// Owners wishing to revoke a delegated cap they do not hold must use `revoke_all_caps`.
     entry fun revoke(cap: MemoryCap, ctx: &TxContext) {
         let MemoryCap { id, memory_id, permissions: _, expiry: _, created_at: _, issued_epoch: _ } = cap;
         
@@ -592,6 +595,9 @@ module manta::memory {
         object::delete(id);
     }
 
+    /// Transfer ownership to a new address.
+    /// WARNING: For shared objects, this transfer is PERMANENT.
+    /// The new owner gains full write control and the previous owner cannot reclaim it.
     entry fun transfer_ownership(
         memory: &mut MemoryObject,
         new_owner: address,

@@ -54,9 +54,33 @@ cd manta
 sui move build
 ```
 
+## Development
+
+This project is organized as a monorepo:
+- `sources/`: Core Move smart contracts.
+- `packages/sdk/`: TypeScript SDK.
+- `packages/api/`: Backend API.
+- `packages/indexer/`: Indexer service.
+
+### Requirements
+- [Sui CLI](https://docs.sui.io/guides/developer/getting-started/sui-install)
+- [Bun](https://bun.sh/) (Runtime & Package Manager)
+- [Docker](https://www.docker.com/) (for local services)
+
 ### Run Tests
+
+#### Move Contract Tests
+Run the Move test suite validation:
 ```bash
 sui move test
+```
+
+#### SDK Tests
+Run the TypeScript SDK tests (requires Bun):
+```bash
+cd packages/sdk
+bun install
+bun test
 ```
 
 ---
@@ -169,9 +193,10 @@ Ownership vs sharing:
 
 Delegation & revocation:
 - Capabilities are **transferable objects**; recipients can re-transfer them.
-- `revoke` destroys the specific cap **only if you hold it**. Owners cannot revoke an arbitrary cap without first obtaining it.
-- Owners can invalidate **all** outstanding caps with `revoke_all_caps` (by bumping `cap_epoch`); old caps remain on-chain but become unusable.
+- `revoke` destroys the specific cap **only if you hold it**. Any cap holder can revoke their own access.
+- **Critical**: Owners generally cannot revoke a specific delegated cap because they don't hold it. They must use `revoke_all_caps` as the emergency lever to invalidate **all** outstanding caps (by bumping `cap_epoch`).
 - `transfer_ownership` **does** invalidate existing caps by bumping `cap_epoch`; prior caps become unusable immediately.
+- **Warning for Shared Objects**: `transfer_ownership` on a shared object is **permanent**. The new owner gains full write control and the previous owner cannot reclaim it unless the new owner transfers it back.
 - `delegate` can mint any nonzero permission bitmask (including write-only caps that omit READ). The convenience helpers (`delegate_append`, `delegate_update`) always include READ.
 
 Permanence, mutability, and versioning:
