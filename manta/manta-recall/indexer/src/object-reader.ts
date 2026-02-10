@@ -1,6 +1,8 @@
 import type { SuiClient, SuiObjectResponse } from '@mysten/sui/client';
 import type { Db } from './db.js';
 import { SCHEMA_EPISODIC, SCHEMA_SEMANTIC } from './types.js';
+import { chunk } from './chunker.js';
+
 
 // ============================================================
 // On-chain BCS layout of MemoryObject.data
@@ -26,7 +28,7 @@ export class ObjectReader {
   constructor(
     private sui: SuiClient,
     private db: Db,
-  ) {}
+  ) { }
 
   /**
    * Fetch a MemoryObject from chain and sync its entries to Postgres.
@@ -71,11 +73,11 @@ export class ObjectReader {
 
     const payloadText = tryDecodeUtf8(rawData);
 
-    await this.db.insertEntry({
+    const entryId = await this.db.insertEntry({
       memoryId: objectId,
       entryIndex: version,
       actor,
-      key: schemaType === SCHEMA_SEMANTIC ? rawData.subarray(0, 32) : null, // first 32 bytes as key hint
+      key: schemaType === SCHEMA_SEMANTIC ? rawData.subarray(0, 32) : null,
       payload: rawData,
       payloadText,
       txDigest,
@@ -84,10 +86,18 @@ export class ObjectReader {
       version,
     });
 
+    // Phase 2: Hierarchical Chunking
+    if (payloadText) {
+      const chunks = chunk(payloadText, 400); // 400 tokens (~1600 chars)
+      await this.db.insertChunks(entryId, objectId, chunks);
+      console.log(`[object-reader] Created ${chunks.length} chunks for ${objectId}`);
+    }
+
     console.log(
       `[object-reader] Synced ${objectId} v=${version} ` +
       `(${rawData.length} bytes, schema=${schemaType === SCHEMA_EPISODIC ? 'episodic' : 'semantic'})`,
     );
+
   }
 }
 

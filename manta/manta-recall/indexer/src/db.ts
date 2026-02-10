@@ -185,4 +185,32 @@ export class Db {
       [capId],
     );
   }
+
+  // ============================================================
+  // Chunk operations (Phase 2)
+  // ============================================================
+
+  async insertChunks(
+    entryId: number,
+    memoryId: string,
+    chunks: { text: string; index: number; tokens: number }[],
+  ): Promise<void> {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      for (const chunk of chunks) {
+        await client.query(
+          `INSERT INTO memory_chunks (entry_id, memory_id, chunk_index, chunk_text, token_count)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [entryId, memoryId, chunk.index, chunk.text, chunk.tokens],
+        );
+      }
+      await client.query('COMMIT');
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
+  }
 }
