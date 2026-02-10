@@ -193,16 +193,17 @@ export class Db {
   async insertChunks(
     entryId: number,
     memoryId: string,
-    chunks: { text: string; index: number; tokens: number }[],
+    chunks: { text: string; index: number; tokens: number; embedding?: number[] }[],
   ): Promise<void> {
     const client = await this.pool.connect();
     try {
       await client.query('BEGIN');
       for (const chunk of chunks) {
+        const vectorStr = chunk.embedding ? `[${chunk.embedding.join(',')}]` : null;
         await client.query(
-          `INSERT INTO memory_chunks (entry_id, memory_id, chunk_index, chunk_text, token_count)
-           VALUES ($1, $2, $3, $4, $5)`,
-          [entryId, memoryId, chunk.index, chunk.text, chunk.tokens],
+          `INSERT INTO memory_chunks (entry_id, memory_id, chunk_index, chunk_text, token_count, embedding, model_name)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [entryId, memoryId, chunk.index, chunk.text, chunk.tokens, vectorStr, 'nomic-embed-text-v1.5'],
         );
       }
       await client.query('COMMIT');
