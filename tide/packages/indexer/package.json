@@ -1,0 +1,25 @@
+{
+  "name": "@tide/indexer",
+  "version": "0.1.0",
+  "description": "Sui on-chain event indexer for Tide memory objects",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@tide/shared": "workspace:*",
+    "@mysten/sui": "^1.20.0",
+    "dotenv": "^16.4.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsup": "^8.5.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  },
+  "license": "Apache-2.0"
+}

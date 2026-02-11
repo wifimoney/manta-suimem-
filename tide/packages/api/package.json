@@ -1,0 +1,17 @@
+{
+    "name": "@tide/api",
+    "version": "0.1.0",
+    "type": "module",
+    "dependencies": {
+        "@tide/shared": "workspace:*",
+        "bun-types": "latest"
+    },
+    "devDependencies": {
+        "@types/bun": "^1.3.9",
+        "typescript": "^5.0.0"
+    },
+    "scripts": {
+        "dev": "bun run src/server.ts",
+        "build": "bun build ./src/server.ts --outdir ./dist --target bun"
+    }
+}

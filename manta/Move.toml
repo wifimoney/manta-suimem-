@@ -1,8 +1,0 @@
-[package]
-name = "manta"
-edition = "2024.beta"
-
-[dependencies]
-
-[addresses]
-manta = "0x0"

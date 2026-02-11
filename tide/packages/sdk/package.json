@@ -1,0 +1,55 @@
+{
+  "name": "tide-sui-sdk",
+  "version": "2.0.0",
+  "description": "TypeScript SDK for Tide - Sui On-Chain Memory Primitive",
+  "main": "dist/index.js",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsup src/index.ts --format cjs,esm --dts",
+    "dev": "tsup src/index.ts --format cjs,esm --dts --watch",
+    "test": "vitest",
+    "lint": "eslint src/",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "sui",
+    "blockchain",
+    "memory",
+    "agent",
+    "tide"
+  ],
+  "author": "elibelilty",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/wifimoney/tide-suimem-"
+  },
+  "homepage": "https://github.com/wifimoney/tide-suimem-#readme",
+  "bugs": {
+    "url": "https://github.com/wifimoney/tide-suimem-/issues"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "dependencies": {
+    "@mysten/sui": "^2.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.0.0",
+    "vitest": "^1.0.0"
+  },
+  "peerDependencies": {
+    "@mysten/sui": "^2.0.0"
+  }
+}
