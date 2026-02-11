@@ -301,9 +301,9 @@ export class MantaClient {
       owner: fields.owner,
       schemaType: fields.schema_type as 0 | 1,
       data: new Uint8Array(fields.data),
-      version: BigInt(fields.version),
-      createdAt: BigInt(fields.created_at),
-      capEpoch: BigInt(fields.cap_epoch),
+      version: BigInt(fields.version ?? '0'),
+      createdAt: BigInt(fields.created_at ?? '0'),
+      capEpoch: BigInt(fields.cap_epoch ?? '0'),
     };
   }
 
@@ -324,8 +324,8 @@ export class MantaClient {
       memoryId: fields.memory_id,
       permissions: fields.permissions as PermissionValue,
       expiry: fields.expiry?.vec?.[0] ? BigInt(fields.expiry.vec[0]) : null,
-      createdAt: BigInt(fields.created_at),
-      issuedEpoch: BigInt(fields.issued_epoch),
+      createdAt: BigInt(fields.created_at ?? '0'),
+      issuedEpoch: BigInt(fields.issued_epoch ?? '0'),
     };
   }
 

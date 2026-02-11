@@ -1,0 +1,9 @@
+{
+    "name": "manta-root",
+    "scripts": {
+        "test": "cd manta && bun run test",
+        "test:sdk": "cd manta && bun run test:sdk",
+        "test:e2e": "cd manta && bun run test:e2e",
+        "test:move": "cd manta && bun run test:move"
+    }
+}

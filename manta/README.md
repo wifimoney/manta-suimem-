@@ -82,6 +82,12 @@ cd packages/sdk
 bun install
 bun test
 ```
+#### Root Convenience Scripts
+If you are at the repository root, you can use these shortcuts:
+- `bun run test`: Run SDK unit tests.
+- `bun run test:e2e`: Run the full Testnet E2E suite.
+- `bun run test:move`: Run Move contract tests.
+- `bun run test:sdk`: Run SDK tests using Vitest directly.
 
 ---
 
@@ -267,40 +273,77 @@ public struct MemoryCap has key, store {
 
 ## TypeScript SDK
 
+The Manta SDK provides a high-level wrapper for interacting with Manta memory objects.
+
 ### Installation
+
+Inside the monorepo:
 ```bash
-cd manta-sdk
-npm install
-npm run build
+cd packages/sdk
+bun install
+bun run build
 ```
 
-### Usage
-```typescript
-import { MantaClient, SchemaType, Permissions } from '@manta/sdk';
+To use it in your own project within this monorepo, add it as a workspace dependency:
+```json
+"dependencies": {
+  "manta-sui-sdk": "workspace:*"
+}
+```
 
-const client = new MantaClient({
-  network: 'testnet',
-  suiClient: yourSuiClient,
+### Basic Usage
+
+#### 1. Initialize the Client
+```typescript
+import { MantaClient } from 'manta-sui-sdk';
+import { SuiJsonRpcClient, getJsonRpcFullnodeUrl } from '@mysten/sui/jsonRpc';
+
+const client = new SuiJsonRpcClient({
+    network: 'testnet',
+    url: getJsonRpcFullnodeUrl('testnet')
 });
 
-// Create episodic memory
-const createTx = client.createMemory(SchemaType.EPISODIC);
-
-// Append data
-const appendTx = client.append(memoryId, new TextEncoder().encode('hello'));
-
-// Delegate access
-const delegateTx = client.delegate(
-  memoryId,
-  recipientAddress,
-  Permissions.APPEND,
-  Date.now() + 3600000 // 1 hour expiry
-);
-
-// Read and decode
-const memory = await client.getMemory(memoryId);
-const entries = client.decodeEpisodicEntries(memory.data);
+const manta = new MantaClient({ 
+    network: 'testnet', 
+    client 
+});
 ```
+
+#### 2. Create and Write to Memory
+```typescript
+// Create an episodic memory (append-only)
+const tx = manta.createEpisodicMemory();
+// ... sign and execute tx ...
+
+// Generate an append transaction
+const appendTx = manta.append(memoryId, "Your data here or Uint8Array");
+// ... sign and execute appendTx ...
+```
+
+#### 3. Read and Decode Memory
+```typescript
+// Fetch the memory object
+const memory = await manta.getMemory(memoryId);
+
+if (memory) {
+    // Decode episodic entries (auto-parses BCS)
+    const entries = manta.decodeEpisodic(memory);
+    entries.forEach(entry => {
+        console.log(`[${entry.timestamp}] Actor: ${entry.actor} Payload:`, entry.payload);
+    });
+}
+```
+
+#### 4. Capability Delegation
+```typescript
+// Delegate APPEND rights to another user
+const delegateTx = manta.delegateAppend(memoryId, RECIPIENT_ADDRESS);
+// ... sign and execute ...
+```
+
+### End-to-End Reference
+For a complete working example including wallet generation and permission checks, see:
+`packages/sdk/e2e_test.ts`
 
 ---
 

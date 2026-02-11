@@ -3,5 +3,11 @@
     "version": "0.1.0",
     "workspaces": [
         "packages/*"
-    ]
+    ],
+    "scripts": {
+        "test": "bun test packages/sdk/test",
+        "test:sdk": "cd packages/sdk && bun run test",
+        "test:e2e": "cd packages/sdk && bun run e2e_test.ts",
+        "test:move": "sui move test"
+    }
 }
