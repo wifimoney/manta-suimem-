@@ -62,4 +62,23 @@ module manta::vault {
         assert!(object::id_to_address(&memory::cap_memory_id(cap)) == memory_addr, ENoAccess);
         assert!(memory::cap_has_permission(cap, 1), ENoAccess);
     }
+
+    // Deregister Functions
+
+    public struct VaultDeregistered has copy, drop {
+    memory_id: address,
+    memory_owner: address,
+}
+
+public entry fun deregister_memory(registry: &mut VaultRegistry, memory: &MemoryObject, ctx: &mut TxContext) {
+    let owner = tx_context::sender(ctx);
+    assert!(owner == memory::get_owner(memory), 0);
+    let memory_id = object::id_to_address(&memory::get_id(memory));
+    assert!(table::contains(&registry.entries, memory_id), ENotRegistered);
+    let vault_entry = table::remove(&mut registry.entries, memory_id);
+    event::emit(VaultDeregistered {
+        memory_id: memory_id,
+        memory_owner: vault_entry.owner,
+    });
+}
 }
