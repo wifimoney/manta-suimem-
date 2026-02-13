@@ -49,7 +49,7 @@ Tide answers: **"Where does long-term state live on Sui, and who controls it?"**
 
 ### Clone and Build
 ```bash
-git clone https://github.com/anthropics/tide.git
+git clone https://github.com/wifimoney/tide.git
 cd tide
 sui move build
 ```
@@ -95,8 +95,8 @@ If you are at the repository root, you can use these shortcuts:
 
 | Network | Package ID | Version |
 |---------|------------|---------|
-| **Testnet** | `0x61f59d91f6ac0c1a321a2682d7d70cab4bc0425ed1d8b417d2494f0bbc0d6be0` | V1.3 |
-| Devnet | `0x759a1ecfbfe2c157430a9d6c3138e40b971d0fc4ee8e0e1f67e6a3873232c6c7` | V1.2 |
+| **Testnet** | `0xd6a19fc6db4c7ad58e5b453b2b208053caab7c3681b473f2e6261bd79dd964f6` | V1.3 |
+| Devnet | `0x38c55662dfe0ff2cd0e346da0bf20916afa26bb65fe86239a687b47826643e0d` | V1.3 |
 | Mainnet | Coming soon | - |
 
 ---
@@ -107,7 +107,7 @@ If you are at the repository root, you can use these shortcuts:
 ```bash
 # Create private episodic memory (for logs/events)
 sui client call \
-  --package 0x61f59d91f6ac0c1a321a2682d7d70cab4bc0425ed1d8b417d2494f0bbc0d6be0 \
+  --package 0xd6a19fc6db4c7ad58e5b453b2b208053caab7c3681b473f2e6261bd79dd964f6 \
   --module memory \
   --function create_episodic \
   --args 0x6 \
@@ -115,7 +115,7 @@ sui client call \
 
 # Create shared semantic memory (globally readable, owner/cap writable)
 sui client call \
-  --package 0x61f59d91f6ac0c1a321a2682d7d70cab4bc0425ed1d8b417d2494f0bbc0d6be0 \
+  --package 0xd6a19fc6db4c7ad58e5b453b2b208053caab7c3681b473f2e6261bd79dd964f6 \
   --module memory \
   --function create_shared_semantic \
   --args 0x6 \
@@ -126,7 +126,7 @@ sui client call \
 ```bash
 # Append to episodic memory (payload is hex-encoded bytes)
 sui client call \
-  --package 0x61f59d91f6ac0c1a321a2682d7d70cab4bc0425ed1d8b417d2494f0bbc0d6be0 \
+  --package 0xd6a19fc6db4c7ad58e5b453b2b208053caab7c3681b473f2e6261bd79dd964f6 \
   --module memory \
   --function append \
   --args <MEMORY_OBJECT_ID> 0x68656c6c6f 0x6 \
@@ -134,7 +134,7 @@ sui client call \
 
 # Update semantic memory
 sui client call \
-  --package 0x61f59d91f6ac0c1a321a2682d7d70cab4bc0425ed1d8b417d2494f0bbc0d6be0 \
+  --package 0xd6a19fc6db4c7ad58e5b453b2b208053caab7c3681b473f2e6261bd79dd964f6 \
   --module memory \
   --function update \
   --args <MEMORY_OBJECT_ID> 0x6b6579 0x76616c7565 0x6 \
@@ -145,7 +145,7 @@ sui client call \
 ```bash
 # Delegate append access to another address
 sui client call \
-  --package 0x61f59d91f6ac0c1a321a2682d7d70cab4bc0425ed1d8b417d2494f0bbc0d6be0 \
+  --package 0xd6a19fc6db4c7ad58e5b453b2b208053caab7c3681b473f2e6261bd79dd964f6 \
   --module memory \
   --function delegate_append \
   --args <MEMORY_OBJECT_ID> <RECIPIENT_ADDRESS> "[]" 0x6 \
@@ -156,7 +156,7 @@ sui client call \
 ```bash
 # Write using a capability
 sui client call \
-  --package 0x61f59d91f6ac0c1a321a2682d7d70cab4bc0425ed1d8b417d2494f0bbc0d6be0 \
+  --package 0xd6a19fc6db4c7ad58e5b453b2b208053caab7c3681b473f2e6261bd79dd964f6 \
   --module memory \
   --function cap_append \
   --args <MEMORY_OBJECT_ID> <CAP_ID> 0x64656c6567617465645f6576656e74 0x6 \
@@ -372,8 +372,8 @@ Please report security issues privately. Do not open public issues.
 - [x] TypeScript SDK with bounds checking
 - [x] Testnet deployment
 - [x] Devnet V1.3 deployment
-- [x] External security audit
-- [x] Mainnet deployment
+- [ ] External security audit
+- [ ] Mainnet deployment
 
 ---
 

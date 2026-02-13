@@ -23,11 +23,11 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/wifimoney/tide-suimem-"
+    "url": "https://github.com/wifimoney/tide"
   },
-  "homepage": "https://github.com/wifimoney/tide-suimem-#readme",
+  "homepage": "https://github.com/wifimoney/tide#readme",
   "bugs": {
-    "url": "https://github.com/wifimoney/tide-suimem-/issues"
+    "url": "https://github.com/wifimoney/tide/issues"
   },
   "files": [
     "dist",
